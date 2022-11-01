@@ -18,8 +18,9 @@ cabal.sandbox.config
 *.eventlog
 .stack-work/
 .bak
-.info
+*.info
 tester.sh
+latc.exe
 cabal.project.local
 cabal.project.local~
 .HTF/
