@@ -1,9 +1,17 @@
-typecheckSources = src/Frontend/Typecheck/Ast.hs
-parserSources = src/Frontend/Parser/AbsLatte.hs src/Frontend/Parser/LexLatte.hs src/Frontend/Parser/ParLatte.hs
+synthesisSources = src/Frontend/Synthesis/Position.hs \
+	src/Frontend/Synthesis/TypeCheckData.hs \
+	src/Frontend/Synthesis/TypeCheck.hs \
+	src/Frontend/Synthesis/Ast.hs \
+	src/Frontend/Synthesis/FrontExceptions.hs \
+	src/Frontend/Synthesis/Optimizer.hs \
+	src/Frontend/Synthesis/OptimizerData.hs
+parserSources = src/Frontend/Parser/AbsLatte.hs \
+	src/Frontend/Parser/LexLatte.hs \
+	src/Frontend/Parser/ParLatte.hs 
 
 all: compiler
 
-compiler: .\src\Main.hs ${typecheckSources} ${parserSources}
+compiler: .\src\Main.hs ${synthesisSources} ${parserSources}
 	ghc --make -isrc/Frontend/Parser:src/Frontend/Synthesis .\src\Main.hs -o latc
 
 clean:
