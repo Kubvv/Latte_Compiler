@@ -4,6 +4,7 @@ import AbsLatte
 
 data Pos = BNFC BNFC'Position
          | Default
+         deriving (Eq, Ord, Read)
 
 instance Show Pos where
   show (BNFC (Just (x, y))) = concat [

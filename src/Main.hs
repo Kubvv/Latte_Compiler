@@ -20,6 +20,9 @@ import AbsLatte as Abs
 
 import Ast as A
 import FrontExceptions
+import TypeCheck
+import TypeCheckData
+import Optimizer
 
 unpackArgs :: [String] -> (Bool, Maybe String, Maybe String, Bool) -> (Bool, Maybe String, Maybe String, Bool)
 unpackArgs ("-h":args) (False, o, files, err) = unpackArgs args (True, o, files, err)
@@ -37,7 +40,7 @@ unpackArgs [] acc = acc
 exitErrWithMessage :: String -> Bool -> IO ()
 exitErrWithMessage err isProgErr =
   do
-    -- when isProgErr $ hPutStrLn stderr "ERROR\n"
+    when isProgErr $ hPutStrLn stderr "ERROR\n"
     hPutStrLn stderr err
     exitFailure
 
@@ -66,15 +69,16 @@ syntaxCheck out file =
 runFrontCheck :: String -> Abs.Program -> IO ()
 runFrontCheck out prog = 
   do
-    case runExcept $ frontCheck prog of
-      Right t -> exitSuccess
+    case runExcept $ checkTypes (convertProg prog) of
+      Right (t, cs) -> runOptimizer out t cs 
       Left err -> exitErrWithMessage (show err) True
 
-frontCheck :: Abs.Program -> Except FrontException A.Program
-frontCheck prog = 
+runOptimizer :: String -> A.Program -> [Class] -> IO ()
+runOptimizer out prog cs =
   do
-    let ast = convertProg prog
-    return ast
+    case runExcept $ optimize prog of
+      Right t -> exitSuccess
+      Left err -> exitErrWithMessage (show err) True
 
 main :: IO ()
 main = 
