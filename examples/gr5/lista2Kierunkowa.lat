@@ -61,7 +61,8 @@ Lista wrocNaPoczatekIWypisuj(Lista odKonca, int dl){
 }
 
 class Lista{
-	Lista poprzedni, nastepny;
+	Lista poprzedni;
+	Lista nastepny;
 	int wartosc;
 }
 
