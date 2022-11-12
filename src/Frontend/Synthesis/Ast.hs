@@ -158,7 +158,7 @@ convertStmt (Abs.For bnfc typ id@(Abs.Ident x) e s) = BlockS pos (Block pos [ --
     (TInt pos, Ast.Init pos (createIdent ("a_" ++ x)) (Prim pos (Int pos 0))), (TInf pos, Ast.Init pos (createIdent ("b_" ++ x)) (convertExpr e))
     ],
   Ast.While pos (
-    Ram pos (Lt pos) (Ast.Var pos (createIdent ("a_" ++ x))) (Elem pos (Ast.Var pos (createIdent ("b_" ++ x))) (Ast.Ident "len") Nothing))
+    Ram pos (Lt pos) (Ast.Var pos (createIdent ("a_" ++ x))) (Elem pos (Ast.Var pos (createIdent ("b_" ++ x))) (Ast.Ident "length") Nothing))
     (BlockS pos (Block pos [
       Ast.Decl pos [(convertType typ, Ast.Init pos (convertIdent id) (ArrAcs pos (Ast.Var pos (createIdent ("b_" ++ x))) (Ast.Var pos (createIdent ("a_" ++ x))) Nothing))],
       convertStmt s,
@@ -269,7 +269,7 @@ convertExpr (Abs.ELitInt bnfc i) = Prim (toPos bnfc) (Int (toPos bnfc) i)
 convertExpr (Abs.ELitNull bnfc) = Prim (toPos bnfc) (Null (toPos bnfc))
 convertExpr (Abs.ELitTrue bnfc) = Prim (toPos bnfc) (Bool (toPos bnfc) True)
 convertExpr (Abs.ELitFalse bnfc) = Prim (toPos bnfc) (Bool (toPos bnfc) False)
-convertExpr (Abs.EString bnfc s) = Prim (toPos bnfc) (Str (toPos bnfc) (convertString (take (length s - 2) (drop 1 s))))
+convertExpr (Abs.EString bnfc s) = Prim (toPos bnfc) (Str (toPos bnfc) (convertString s))
 
 convertString :: String -> String
 convertString [] = []
@@ -578,9 +578,9 @@ isInfType :: Ast.Type -> Bool
 isInfType (TInf _) = True
 isInfType _ = False
 
-isArrayType :: Ast.Type -> Bool
-inArrayType (TArray {}) = True
-isArrayType _ = False
+isArrType :: Ast.Type -> Bool
+inArrType (TArray _ _) = True
+isArrType _ = False
 
 isFunType :: Ast.Type -> Bool
 isFunType (TFun {}) = True
