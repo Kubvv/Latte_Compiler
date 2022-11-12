@@ -16,26 +16,34 @@ import Position
 
 type Inits = [(Type, Item)]
 
+{- Optimize the ast tree for easier translation later on
+ - Optimization consists of folding consts, checking if there
+ - are returns in every branch of each function and eliminating
+ - dead code -}
 optimize :: Program -> ExceptMonad Program
 optimize p =
   do
     constProg <- runReaderT (evalStateT (cutProgConst p) 0) (CEnv M.empty False S.empty)
     returnProg <- crawlProgReturn constProg
     condProg <- addCondProg returnProg
+    liftIO $ putStrLn $ prnt 0 condProg
     renameProgVar condProg
 
 -- Cutting expressions --
 
+-- Throw if expression is null
 throwIfNull :: Pos -> Expr -> ConstMonad ()
-throwIfNull pos (Prim _ (Null _)) = lift $ lift $ throwError (AlwaysNullException pos)
+throwIfNull pos e@(Prim _ (Null _)) = lift $ lift $ throwError (AlwaysNullException pos)
 throwIfNull _ _ = return ()
 
+-- Throw if index at array access is always negative
 throwIfIncorrectIndex :: Pos -> Expr -> ConstMonad ()
 throwIfIncorrectIndex pos (Prim _ (Int _ i)) =
   when (i < 0) $
     lift $ lift $ throwError (NegativeIndexException pos)
 throwIfIncorrectIndex _ _ = return ()
 
+-- Construct a list of all block declaration identifiers 
 getBlockAss :: [Stmt] -> [Ident]
 getBlockAss [] = []
 getBlockAss (Decl _ inits:sts) =
@@ -44,6 +52,7 @@ getBlockAss (Decl _ inits:sts) =
     P.filter (`notElem` ids) other
 getBlockAss (st:sts) = getWhileAss st ++ getBlockAss sts
 
+-- Construct a list of all while identifiers that were changed
 getWhileAss :: Stmt -> [Ident]
 getWhileAss (While _ _ s) = getWhileAss s
 getWhileAss (Cond _ _ s1 s2) = getWhileAss s1 ++ getWhileAss s2
@@ -51,14 +60,20 @@ getWhileAss (Ass _ (Var _ id) _) = [id]
 getWhileAss (BlockS _ (Block _ stmts)) = getBlockAss stmts
 getWhileAss _ = []  
 
+-- Cutting the const expressions by evaluating them --
+{- This set of instructions traverses the ast tree and
+ - folds all expressions that only have const values in them -}
+
 cutProgConst :: Program -> ConstMonad Program
 cutProgConst (Program pos defs) =
   do
     res <- mapM cutDefConst defs
     return (Program pos res)
 
+-- FnDef: Put function arguments as dynamic cutType values and traverse the function block
+-- ClsDef: Traverse all methods inside the class
 cutDefConst :: Def -> ConstMonad Def
-cutDefConst (FnDef pos typ id args block) =
+cutDefConst (FnDef pos typ id args block) = 
   do
     res <- local (putFunctionArgsToVarMap args) (cutBlockConst block)
     return (FnDef pos typ id args res)
@@ -67,6 +82,8 @@ cutDefConst (ClsDef pos id inh es) =
     res <- mapM cutElemConst es
     return (ClsDef pos id inh res)
 
+-- MetDef: Put method arguments as dynamic cutType values and traverse the method block
+-- AtrDef: Disregard attributes
 cutElemConst :: ClsDef -> ConstMonad ClsDef
 cutElemConst (MetDef pos typ id args block) =
   do
@@ -74,20 +91,25 @@ cutElemConst (MetDef pos typ id args block) =
     return (MetDef pos typ id args res)
 cutElemConst atr@AtrDef {} = return atr
 
-stmtController :: [Stmt] -> ConstMonad [Stmt]
-stmtController [] = return []
-stmtController (st:sts) =
+{- Used for changing the environment after each statement, 
+ - as some declarations might happen in between -}
+cutStmtController :: [Stmt] -> ConstMonad [Stmt]
+cutStmtController [] = return []
+cutStmtController (st:sts) =
   do
     (res, change) <- cutStmtConst st
-    reses <- local change (stmtController sts)
+    reses <- local change (cutStmtController sts)
     return (res:reses)
 
 cutBlockConst :: Block -> ConstMonad Block
 cutBlockConst (Block pos stmts) =
   do
-    res <- stmtController stmts
+    res <- cutStmtController stmts
     return (Block pos res)
 
+-- Process one declaration at a time, perform tail recursion
+-- Init: save initialized variable to env as const iff expresion is Prim
+-- NoInit: save declared variable to env as const with default value saved (0, false or null)
 cutInitConst :: Inits -> ConstMonad (Inits, ConstEnv -> ConstEnv)
 cutInitConst [] = return ([], id)
 cutInitConst ((typ, Init pos id e):is) =
@@ -98,8 +120,21 @@ cutInitConst ((typ, Init pos id e):is) =
 cutInitConst ((typ, NoInit pos id):is) =
   do
     (res, f) <- local (putv id typ) (cutInitConst is)
-    return ((typ, Init pos id (Prim pos (getPrimFromVal $ getValFromType typ))):res, f . putv id typ)
+    return ((typ, Init pos id (Prim pos (getPrimFromCutType $ getCutTypeFromType typ))):res, f . putv id typ)
 
+-- BlockS: fold every const inside a block
+-- Decl: call cutInitConst and return a function for cutStmtController
+-- Ass: cut consts in every subexpression of assignment
+--   If e1 is a variable, change its type in env to dynamic if it wasn't declared inside loop,
+--   otherwise change the variable type in env depending on e2 constructor type
+-- Ret: cut consts in returned expression
+-- Cond: eliminate dead ifs branches when conditional expression is infferable, then
+--    fold consts from reachable statements
+-- While: eliminate dead code when condition is always false, then get all
+--    assignments from within the block and set the corresponding id's to dynamic cutType,
+--    then evaluate the statements in while block
+-- ExprS: cut consts from given expression
+-- Rest: pass
 cutStmtConst :: Stmt -> ConstMonad (Stmt, ConstEnv -> ConstEnv)
 cutStmtConst (Empty pos) = return (Empty pos, id)
 cutStmtConst (BlockS pos block) =
@@ -110,27 +145,15 @@ cutStmtConst (Decl pos inits) =
   do
     (res, f) <- cutInitConst inits
     return (Decl pos res, f)
-cutStmtConst (Ass pos e1 e2) = do 
+cutStmtConst (Ass pos e1 e2) = do
+  env <- ask
   case e1 of
-    (Elem pos2 ea1 id2 mt) -> do
-      res2 <- cutExprConst e2
-      rese <- cutExprConst ea1
-      throwIfNull pos2 rese
-      return (Ass pos (Elem pos2 rese id2 mt) res2, id)
-    (ArrAcs pos2 ea1 ea2 ms) -> do
-      rese1 <- cutExprConst ea1
-      rese2 <- cutExprConst ea2
-      res2 <- cutExprConst e2
-      throwIfNull pos2 rese1
-      throwIfIncorrectIndex pos2 rese2
-      return (Ass pos (ArrAcs pos2 rese1 rese2 ms) res2, id)
     (Var _ id) -> do
-      env <- ask
       res2 <- cutExprConst e2
       let f = if isInside env && S.member id (insideVar env) then
-                modv id Dyn
-              else
                 modvexpr id res2
+              else
+                modv id Dyn          
       return (Ass pos e1 res2, f)
     _ -> do
       res1 <- cutExprConst e1
@@ -149,7 +172,7 @@ cutStmtConst (Cond pos e s1 s2) =
       Prim _ (Bool _ False) -> cutStmtConst s2
       _ -> do
         (ress1, f1) <- local setInside (cutStmtConst s1)
-        (ress2, f2) <- local setInside (cutStmtConst s1)
+        (ress2, f2) <- local setInside (cutStmtConst s2)
         return (Cond pos res ress1 ress2, f1 . f2)
 cutStmtConst (While pos e s) =
   do
@@ -166,6 +189,19 @@ cutStmtConst (ExprS pos e) =
     res <- cutExprConst e
     return (ExprS pos res, id)
 
+-- Cast: Skip unnecessary casts when expression evaluates to specific primitive type
+-- ArrAcs: Cut consts from subexpression if throw when array is null or index is negative
+-- App: Return immedietly when: comparing nulls with equals OR swap argument with null if null compares
+--    with arg using equals method, then fold the consts in application and arguments, then
+--    fold application to primitive when something compares with null using equals or
+--    two known string are concatenated
+-- Elem: Cut consts from subexpression and if it turns out to be null, throw error
+-- New: Cut consts from expression if it exists
+-- NotNeg: Fold consts from subexpression and evaluate it if it turns out to be a primitive type
+-- Ram: Fold consts from subexpressions, if it is a series of divisions then swap them to division of
+--    multiplied values, then go to appropriate function based on the operator type
+-- Var: Swap the variable if it's represented by a const in the environment
+-- Prim: pass
 cutExprConst :: Expr -> ConstMonad Expr
 cutExprConst (Cast pos typ e) =
   do
@@ -175,8 +211,8 @@ cutExprConst (Cast pos typ e) =
         return (Prim pos2 (Byte pos2 i)) 
       (Prim pos2 (Byte _ b), TInt _) -> 
         return (Prim pos2 (Int pos2 b))
-      (p@(Prim {}), TClass _ _) -> 
-        return p
+      (Prim pos2 (Null _), TClass _ _) -> 
+        return (Prim pos2 (Null pos2))
       _ -> return (Cast pos typ res) 
 cutExprConst (ArrAcs pos e1 e2 mt) =
   do
@@ -202,7 +238,7 @@ cutExprConst (App pos e es) =
           (Elem pos2 (Prim _ (Str _ s1)) (Ident x) mt, [p@(Prim _ (Str _ s2))]) | x == "concat" ->
             return (Prim pos2 (Str pos2 (s1 ++ s2)))
           _ -> return (App pos res reses)
-cutExprConst (Elem pos e id ms) =
+cutExprConst e1@(Elem pos e id ms) =
   do
     res <- cutExprConst e
     throwIfNull pos res
@@ -219,25 +255,25 @@ cutExprConst (NotNeg pos op e) =
       (Prim _ (Int _ i), Neg _) -> return (Prim pos (Int pos (-i)))
       (Prim _ (Bool _ b), Not _) -> return (Prim pos (Bool pos (not b))) 
       (_, _) -> return (NotNeg pos op res)
-cutExprConst r@(Ram pos op e1 e2) =
+cutExprConst r1@(Ram pos op e1 e2) =
   do
     res1 <- cutExprConst e1
-    res2 <- cutExprConst e2          
-    if r /= optimDiv then
+    res2 <- cutExprConst e2
+    let r2 = Ram pos op res1 res2
+    let optimDiv = case r2 of
+                    (Ram pos2 (Div pos3) (Ram pos4 (Div pos5) e3 e4) e5) -> Ram pos2 (Div pos3) e3 (Ram pos4 (Mul pos5) e4 e5)
+                    _ -> r2
+    if r2 /= optimDiv then
       cutExprConst optimDiv
-    else if isEqOperator op then
+    else if isEqOperator op then do
       if res1 == res2 then
         return (Prim pos (Bool pos True))
       else
-        return r
+        cutRelConst r2
     else if isRelOperator op then
-      cutRelConst r
+      cutRelConst r2
     else
-      cutArthConst r 
-  where
-    optimDiv = case r of
-      (Ram pos2 (Div pos3) (Ram pos4 (Div pos5) e3 e4) e5) -> Ram pos2 (Div pos3) e3 (Ram pos4 (Mul pos5) e4 e5)
-      _ -> r
+      cutArthConst r2
 cutExprConst (Var pos id) = 
   do
     env <- ask
@@ -246,6 +282,8 @@ cutExprConst (Var pos id) =
       _ -> return (Var pos id) 
 cutExprConst p@(Prim {}) = return p
 
+-- Cut a relation operation if both left and right values are known and of the same type
+-- If only the left part is known, switch it with the right part and swap the opearator
 cutRelConst :: Expr -> ConstMonad Expr
 cutRelConst (Ram pos op (Prim _ (Byte _ b1)) (Prim _ (Byte _ b2))) =
   if getRelOperatorRes op b1 b2 then return (Prim pos (Bool pos True))
@@ -263,19 +301,22 @@ cutRelConst (Ram pos op (Prim pos2 pr) e) =
   return (Ram pos (swapRelOperator op) e (Prim pos2 pr))
 cutRelConst e = return e
 
+-- Cut consts of arithmetic expression by linearizing the expression, sort if
+-- the operator is add or mul and fold the constants 
 cutArthConst :: Expr -> ConstMonad Expr
 cutArthConst e@(Ram pos op e1 e2) = 
   do
     let lin = flattenRam e
-    if isAddMulOperator op then do
-      let lin2 = cutConst (L.sort lin) op
-      let newTree = P.foldl1 (Ram pos op) lin2
-      return newTree
-    else do
-      let lin2 = cutConst lin op
-      let newTree = P.foldl1 (Ram pos op) lin2
-      return newTree
+    liftIO $ print lin
+    let lin2 = if isAddMulOperator op then
+                 cutConst (L.sort lin) op
+               else
+                 cutConst lin op
+    liftIO $ print lin2
+    let newTree = P.foldl1 (Ram pos op) lin2
+    return newTree
 
+-- Convert a tree of ram operator into a linear form stored in list
 flattenRam :: Expr -> [Expr]
 flattenRam (Ram pos op e1 e2) = mode1 ++ mode2
   where
@@ -289,6 +330,8 @@ flattenRam (Ram pos op e1 e2) = mode1 ++ mode2
       _ -> [e2]
 flattenRam _ = []
 
+-- Folds the equation using the op argument when both sides are known and the
+-- types match, in case of boolean values lazy evaluation is used when possible
 cutConst :: [Expr] -> RAMOp -> [Expr]
 cutConst [] _ = []
 cutConst (e1@(Prim pos (Byte pos2 b1)):e2@(Prim _ (Byte _ b2)):es) op = 
@@ -299,7 +342,7 @@ cutConst (e1@(Prim pos (Byte pos2 b1)):e2@(Prim _ (Byte _ b2)):es) op =
   where
     arthRes = getArthOperatorRes op b1 b2
 cutConst (e1@(Prim pos (Int pos2 i1)):e2@(Prim _ (Int _ i2)):es) op = 
-  if isArthOperator op && arthRes < 2^31 && arthRes >= 2^31 then
+  if isArthOperator op && arthRes < 2^31 && arthRes >= -2^31 then
     cutConst (Prim pos (Int pos2 arthRes):es) op
   else
     e1 : cutConst (e2:es) op
@@ -327,7 +370,10 @@ cutConst (e:es) op = e : cutConst es op
 
 
 -- Checking returns and cutting after returns --
+{- This set of instructions traverses the ast tree and
+ - checks whether all paths are ended with a return -}
 
+-- Removes dead code which appears behind a final return
 cutAfterReturn :: [Stmt] -> [Stmt]
 cutAfterReturn [] = []
 cutAfterReturn (st@(Ret pos e):sts) = [st]
@@ -335,6 +381,7 @@ cutAfterReturn (st@(RetV pos):sts) = [st]
 cutAfterReturn (st@(BlockS pos (Block pos2 stmts)):sts) = BlockS pos (Block pos2 (cutAfterReturn stmts)) : cutAfterReturn sts
 cutAfterReturn (st:sts) = st : cutAfterReturn sts
 
+-- Adds a default return for void function when there isn't one present
 addVoidReturn :: [Stmt] -> [Stmt]
 addVoidReturn [] = [RetV Default]
 addVoidReturn stmts =
@@ -349,6 +396,9 @@ crawlProgReturn (Program pos defs) =
     res <- mapM crawlDefReturn defs
     return (Program pos res)
 
+-- FnDef: cuts everything after final return and in case of non void function checks
+--    if every path ends with a return
+-- ClsDef: crawl through all elements of a class
 crawlDefReturn :: Def -> ExceptMonad Def
 crawlDefReturn (FnDef pos typ id args (Block pos2 stmts)) = 
   do
@@ -363,6 +413,9 @@ crawlDefReturn (ClsDef pos id inh es) =
     res <- mapM crawlElemReturn es
     return (ClsDef pos id inh res)
 
+-- MetDef: cuts everything after final return and in case of non void methods checks
+--    if every path ends with a return
+-- AtrDef: pass
 crawlElemReturn :: ClsDef -> ExceptMonad ClsDef
 crawlElemReturn (MetDef pos typ id args (Block pos2 stmts)) =
   do
@@ -377,25 +430,34 @@ crawlElemReturn cd@(AtrDef pos typ id) = return cd
 crawlBlockReturn :: Block -> ExceptMonad ()
 crawlBlockReturn (Block pos stmts) = 
   do
-    crawlStmtController stmts pos
+    res <- crawlStmtController stmts pos False
+    return ()
 
-crawlStmtController :: [Stmt] -> Pos -> ExceptMonad ()
-crawlStmtController [] pos = throwError (NoReturnException pos)
-crawlStmtController (st:sts) pos =
+-- Controls the flow of crawling through statements, throwing error when instructed
+-- and statements analysis ended
+crawlStmtController :: [Stmt] -> Pos -> Bool -> ExceptMonad Bool
+crawlStmtController [] pos noThrow =
+  if noThrow then
+    return False
+  else
+    throwError (NoReturnException pos)
+crawlStmtController (st:sts) pos noThrow =
   do
     res <- crawlStmtReturn st 
     if res then 
-      return ()
+      return True
     else
-      crawlStmtController sts pos
+      crawlStmtController sts pos noThrow
 
+-- Analizes whether given statement ends the function by returning a value
+-- If ends the function when both branches return a value (or condition is known)
+-- While ends the function when there is a return inside the while block (or condition is always true)
 crawlStmtReturn :: Stmt -> ExceptMonad Bool
-crawlStmtReturn (BlockS _ block) = 
+crawlStmtReturn (BlockS pos (Block _ stmts)) = 
   do 
-    crawlBlockReturn block
-    return True
-crawlStmtReturn (RetV {}) = return True
-crawlStmtReturn (Cond _ (Prim _ (Bool _ x)) s1 s2) =
+    crawlStmtController stmts pos True
+crawlStmtReturn (Ret {}) = return True
+crawlStmtReturn (Cond _ (Prim _ (Bool _ x)) s1 s2) = do
   if x then
     crawlStmtReturn s1
   else
@@ -410,7 +472,9 @@ crawlStmtReturn (While _ _ s) = crawlStmtReturn s
 crawlStmtReturn _ = return False
 
 
--- Swapping conditionals -- 
+-- Swapping conditionals --
+{- Swaps the return and assignment of a boolean value from a relational operation
+ - to a conditional statement for easier compilation -}
 
 addCondProg :: Program -> ExceptMonad Program
 addCondProg (Program pos defs) = 
@@ -418,8 +482,8 @@ addCondProg (Program pos defs) =
     res <- mapM addCondDef defs
     return (Program pos res)
 
-addConfDef :: Def -> ExceptMonad Def
-addConfDef (FnDef pos typ id args block) =
+addCondDef :: Def -> ExceptMonad Def
+addCondDef (FnDef pos typ id args block) =
   do
     res <- addCondBlock block
     return (FnDef pos typ id args res)
@@ -441,6 +505,9 @@ addCondBlock (Block pos stmts) =
     res <- mapM addCondStmt stmts
     return (Block pos res)
 
+-- Ass: Swap the assignment to a conditional if the right side is a relational operation
+-- Ret: Swap the return value to a conditional if the subexpression is a relational operation
+-- Rest: pass the work to substatements
 addCondStmt :: Stmt -> ExceptMonad Stmt
 addCondStmt (BlockS pos block) = 
   do
@@ -465,10 +532,12 @@ addCondStmt (While pos e s) =
   do
     res <- addCondStmt s
     return (While pos e res)
-addCondStms s = return s
+addCondStmt s = return s
 
 
 -- Adding scope to variables --
+{- Renames all declared variables to include a scope number in
+ - in their identifiers, scope number is unique for each block -}
 
 renameProgVar :: Program -> ExceptMonad Program
 renameProgVar (Program pos defs) =
@@ -476,6 +545,8 @@ renameProgVar (Program pos defs) =
     res <- mapM renameDefVar defs
     return (Program pos res)
 
+-- FnDef: rename variables inside the function block
+-- ClsDef: rename variables in every class element
 renameDefVar :: Def -> ExceptMonad Def
 renameDefVar (FnDef pos typ id args block) = 
   do
@@ -486,6 +557,8 @@ renameDefVar (ClsDef pos id inh es) =
     res <- mapM renameElemVar es
     return (ClsDef pos id inh es)
 
+-- MetDef: rename variables inside the method block
+-- AtrDef: pass
 renameElemVar :: ClsDef -> ExceptMonad ClsDef
 renameElemVar (MetDef pos typ id args block) =
   do
@@ -499,6 +572,9 @@ renameBlockVar (Block pos stmts) =
     res <- mapM renameStmtVar stmts
     return (Block pos res)
 
+-- Init: rename the variables inside the expression and rename the
+--    the identifier to include the current scope from state
+-- NoInit: rename the identifier to include the current scope from state
 renameInitsVar :: Item -> VarMonad Item
 renameInitsVar (Init pos (Ident x) e) =
   do
@@ -514,6 +590,9 @@ renameInitsVar (NoInit pos (Ident x)) =
     put (putvStore x newX store)
     return (NoInit pos (Ident newX))
 
+-- BlockS: increase the scope counter by one and rename vars inside the block
+-- Decl: rename the identifiers from each declaration
+-- Rest: pass on the work to subexpressions and substatements
 renameStmtVar :: Stmt -> VarMonad Stmt
 renameStmtVar (Empty pos) = return (Empty pos)
 renameStmtVar (BlockS pos block) = 
@@ -553,6 +632,8 @@ renameStmtVar (ExprS pos e) =
     res <- renameExprVar e
     return (ExprS pos res)
 
+-- Var: rename the variable to the scoped version stored in the state (if possible)
+-- Rest: pass on the work to subexpressions 
 renameExprVar :: Expr -> VarMonad Expr
 renameExprVar (Cast pos typ e) =
   do
