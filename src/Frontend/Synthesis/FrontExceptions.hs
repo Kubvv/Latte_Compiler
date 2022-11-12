@@ -20,6 +20,7 @@ data FrontException =
   | ReferenceException Pos Ident
   | NoReturnException Pos
   | UnexpectedReturn Pos
+  | ReturnVoidTypeException Pos
   | NoReturnValueException Pos
   | ReturnWithValueException Pos
   | NoMainException
@@ -31,7 +32,7 @@ data FrontException =
   | RedefinitionException Pos Pos Ident
   | UnexpectedVar Pos
   | UnexpectedVoid Pos
-  | UnexpectedThis Pos
+  | UnexpectedSelf Pos
   | CyclicInheritanceException Pos Ident
   | AssignmentToImmutableAttribute Pos String
   | AssignmentToMethodException Pos Ident
@@ -110,6 +111,8 @@ instance Show FrontException where
     "No return value found " ++ show pos
   show (ReturnWithValueException pos) =
     "Return of void function shouldn't have a value " ++ show pos
+  show (ReturnVoidTypeException pos) =
+    "Can't return a value with type void " ++ show pos
   show NoMainException =
     "No main function found"
   show (NoClassException s) = concat [
@@ -120,7 +123,7 @@ instance Show FrontException where
     ]
   show (WrongMainDefinitionException pos) = concat [
     "Wrong main definition exception ", show pos,
-    ", expected return type of void and no arguments"
+    ", expected return type of int and no arguments"
     ]
   show (DuplicateFunctionArgumentsException pos id) = concat [
     "Two arguments are labeled with the same name ", showIdent id, " ", show pos
@@ -135,8 +138,8 @@ instance Show FrontException where
     "Incorrect use of inffered type " ++ show pos
   show (UnexpectedVoid pos) =
     "Incorrect use of void type " ++ show pos
-  show (UnexpectedThis pos) = 
-    "Incorrect use of this keyword " ++ show pos
+  show (UnexpectedSelf pos) = 
+    "Incorrect use of self keyword " ++ show pos
   show (CyclicInheritanceException pos id) = concat [
     "Cyclic inheritance detected for class ", showIdent id, " ", show pos
     ]
@@ -160,7 +163,7 @@ instance Show FrontException where
     "Cannot cast to inferred type " ++ show pos
   show (WrongArgCountException pos act exp) = concat [
     "Wrong number of arguments in function call, expected ", show exp,
-    " arguments, found ", show act, "arguments ", show pos
+    " arguments, found ", show act, " arguments ", show pos
     ]
   show (NoClassElementException pos clsId elemId) = concat [
     "Class ", showIdent clsId, " does not have an element called ",
@@ -183,7 +186,7 @@ instance Show FrontException where
   show (VarDeclarationAsCondStmtException pos) = 
     "The statement of an if or while cannot be a var declartion statement " ++ show pos
   show (AlwaysNullException pos) = concat [
-    "Expression ", show pos, "always evaluates to null"
+    "Expression ", show pos, " always evaluates to null"
     ]
   show (NegativeIndexException pos) = 
     "Index cannot be a negative value " ++ show pos
