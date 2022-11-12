@@ -15,7 +15,7 @@ data Function = Function Pos Type Ident [Type]
   deriving (Eq, Ord)
 
 data Class = Class Pos Ident (Maybe Ident) [Element]
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Show)
 
 getClassInheritance :: Class -> Maybe Ident
 getClassInheritance (Class _ _ inh _) = inh
@@ -43,7 +43,7 @@ getInheritedElems depth cs (Class _ _ inh es) =
 
 data Element = Method Pos Type Ident [Type]
              | Attribute Pos Ident Type
-             deriving (Eq, Ord)
+             deriving (Eq, Ord, Show)
 
 getElementName :: Element -> String
 getElementName (Method _ _ (Ident x) _) = x
@@ -76,7 +76,7 @@ putFunctionToVarMap newRet args (Env varMap cs fs ret cc) =
 
 putClassToVarMap :: Pos -> Ident -> Env -> Env
 putClassToVarMap pos id (Env varMap cs fs ret cc) =
-  let newMap = M.insert (Ident "this") (TClass pos id) varMap in 
+  let newMap = M.insert (Ident "self") (TClass pos id) varMap in 
     Env newMap cs fs ret (Just $ TClass pos id)
 
 getv :: Ident -> Env -> Maybe Type
@@ -139,5 +139,5 @@ appendDefaultClasses = (++) defaultClasses
 appendDefaultFunctions :: [Function] -> [Function]
 appendDefaultFunctions = (++) defaultFunctions
 
-type ExceptMonad = Except FrontException
-type TypeCheckMonad = ReaderT Env (Except FrontException)
+type ExceptMonad = ExceptT FrontException IO
+type TypeCheckMonad = ReaderT Env (ExceptT FrontException IO)

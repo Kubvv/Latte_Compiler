@@ -579,7 +579,7 @@ isInfType (TInf _) = True
 isInfType _ = False
 
 isArrType :: Ast.Type -> Bool
-inArrType (TArray _ _) = True
+isArrType (TArray _ _) = True
 isArrType _ = False
 
 isFunType :: Ast.Type -> Bool

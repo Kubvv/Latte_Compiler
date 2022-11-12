@@ -207,7 +207,6 @@ checkTypes p@(Program pos defs) =
     res <- runReaderT (checkProgramTypes p) (Env M.empty cls funs Nothing Nothing)
     return (res, cls)
 
-
 isCorrectType :: Type -> TypeCheckMonad ()
 isCorrectType (TArray _ typ) = isCorrectType typ
 isCorrectType (TClass pos (Ident s)) =
@@ -239,15 +238,15 @@ uniqueArgs set (Arg pos _ id@(Ident s):as) =
   else
     uniqueArgs (S.insert s set) as
 
-throwIfVarRepeated :: S.Set String -> M.Map Ident Pos -> [(Type, Item)] -> TypeCheckMonad (Set String, Map Ident Pos)
+throwIfVarRepeated :: S.Set String -> M.Map Ident Pos -> Inits -> TypeCheckMonad (Set String, Map Ident Pos)
 throwIfVarRepeated set map [] = return (set, map)
 throwIfVarRepeated set map (dc:dcs) =
   do
     env <- ask
     let id = getItemIdent $ snd dc
     let sid = showIdent id
-    when ((sid == "this") && isJust (currClass env)) $ 
-      lift $ throwError (UnexpectedThis (getTypePos (fst dc)))
+    when ((sid == "self") && isJust (currClass env)) $ 
+      lift $ throwError (UnexpectedSelf (getTypePos (fst dc)))
     if S.member sid set then do
       let oldPos = map ! id
       lift $ throwError (RedefinitionException (getTypePos (fst dc)) oldPos id)
@@ -255,6 +254,7 @@ throwIfVarRepeated set map (dc:dcs) =
       throwIfVarRepeated (S.insert sid set) (M.insert id (getTypePos (fst dc)) map) dcs
 
 isNoVarRedefinition :: S.Set String -> M.Map Ident Pos -> [Stmt] -> TypeCheckMonad ()
+isNoVarRedefinition _ _ [] = return ()
 isNoVarRedefinition set map ((Decl pos decs):sts) =
   do
     (newSet, newMap) <- throwIfVarRepeated set map decs
@@ -269,7 +269,7 @@ throwIfNoCast pos typ1 typ2 cs =
       lift $ throwError (BadTypeException pos typ1 typ2)
 
 throwIfBadExprCast :: Type -> Type -> [Class] -> TypeCheckMonad ()
-throwIfBadExprCast (TInt pos) (TByte pos2) _ = return ()
+throwIfBadExprCast (TByte pos) (TInt pos2) _ = return ()
 throwIfBadExprCast (TClass pos (Ident "Object")) (TArray pos2 typ) _ = return ()
 throwIfBadExprCast c1@(TClass pos (Ident s1)) c2@(TClass pos2 (Ident s2)) cs =
   do
@@ -384,7 +384,7 @@ checkInitTypes ((typ, Init pos id e):is) =
     (res, resType) <- checkExprTypes e
     when (isInfType resType && isInfType typ) $
       lift $ throwError (NullInferException pos)
-    if isInfType resType then do
+    if isInfType typ then do
       (resItems, f) <- local (putv id resType) (checkInitTypes is)
       return ((resType, Init pos id res):resItems, putv id resType . f)
     else do
@@ -429,6 +429,8 @@ checkStmtTypes (Ret pos e) =
     when (isNothing maybeRetType) $
       lift $ throwError (UnexpectedReturn pos)
     (res, resType) <- checkExprTypes e
+    when (isVoidType resType) $
+      lift $ throwError (ReturnVoidTypeException pos)
     let retType = fromJust maybeRetType
     throwIfNoCast pos resType retType (css env)
     isEq <- isEqType resType retType (css env)
@@ -444,7 +446,7 @@ checkStmtTypes st@(RetV pos) =
       lift $ throwError (UnexpectedReturn pos)
     case fromJust maybeRetType of
       TVoid _ -> return (st, id)
-      _ -> lift $ throwError (ReturnWithValueException pos)
+      _ -> lift $ throwError (NoReturnValueException pos)
 checkStmtTypes (Cond pos e s1 s2) = 
   do
     when (isDeclStmt s1) $
@@ -502,7 +504,7 @@ checkExprTypes (ArrAcs pos e1 e2 mtyp) =
   do
     (arr, arrType) <- checkExprTypes e1
     (ind, indType) <- checkExprTypes e2
-    unless (isArrayType arrType) $
+    unless (isArrType arrType) $
       lift $ throwError (NotAnArrayException pos arrType)
     let typOfArray = getArrInsideType arrType
     case indType of
@@ -575,26 +577,6 @@ checkExprTypes (Ram pos op e1 e2) =
         return (App pos (Elem pos res1 (Ident "concat") (Just "String")) [res2], resType1)
       (Add _, TStr _, TStr _) ->
         return (App pos (Elem pos res1 (Ident "concat") (Just "String")) [res2], resType2)
-      (Add _, TStr _, TByte _) -> 
-        checkExprTypes (App pos (Elem pos res1 (Ident "concat") (Just "String")) [App pos (Var Default (Ident "byteToString")) [res2]])
-      (Add _, TStr _, TInt _) -> 
-        checkExprTypes (App pos (Elem pos res1 (Ident "concat") (Just "String")) [App pos (Var Default (Ident "intToString")) [res2]])
-      (Add _, TStr _, TBool _) -> 
-        checkExprTypes (App pos (Elem pos res1 (Ident "concat") (Just "String")) [App pos (Var Default (Ident "boolToString")) [res2]])
-      (Add _, TStr _, TClass _ _) -> 
-        checkExprTypes (App pos (Elem pos res1 (Ident "concat") (Just "String")) [App pos (Elem Default res2 (Ident "toString") Nothing) []])
-      (Add _, TStr _, TArray _ _) -> 
-        checkExprTypes (App pos (Elem pos res1 (Ident "concat") (Just "String")) [App pos (Elem Default res2 (Ident "toString") Nothing) []])
-      (Add _, TClass _ (Ident "String"), TByte _) -> 
-        checkExprTypes (App pos (Elem pos res1 (Ident "concat") (Just "String")) [App pos (Var Default (Ident "byteToString")) [res2]])
-      (Add _, TClass _ (Ident "String"), TInt _) -> 
-        checkExprTypes (App pos (Elem pos res1 (Ident "concat") (Just "String")) [App pos (Var Default (Ident "intToString")) [res2]])
-      (Add _, TClass _ (Ident "String"), TBool _) -> 
-        checkExprTypes (App pos (Elem pos res1 (Ident "concat") (Just "String")) [App pos (Var Default (Ident "boolToString")) [res2]])
-      (Add _, TClass _ (Ident "String"), TClass _ _) -> 
-        checkExprTypes (App pos (Elem pos res1 (Ident "concat") (Just "String")) [App pos (Elem Default res2 (Ident "toString") Nothing) []])
-      (Add _, TClass _ (Ident "String"), TArray _ _) -> 
-        checkExprTypes (App pos (Elem pos res1 (Ident "concat") (Just "String")) [App pos (Elem Default res2 (Ident "toString") Nothing) []])
       (Equ _, TClass _ (Ident "String"), TStr _) ->
         return (App pos (Elem pos res1 (Ident "equals") (Just "String")) [res2], TBool Default)
       (Equ _, TStr _, TClass _ (Ident "String")) ->
@@ -628,17 +610,18 @@ checkExprTypes (Ram pos op e1 e2) =
       (Neq _, TClass _ _, TInf _) ->
         return (Ram pos op res1 res2, TBool Default)
       (op, left, right) -> do
-        let typeOp = getTypeFromRamOp left op 
+        let typeOp = getTypeFromRamOp left op
         if isIntType left && isByteType right then
           checkExprTypes (Ram pos op res1 (Cast pos (TInt pos) res2))
         else if isIntType right && isByteType left then
           checkExprTypes (Ram pos op (Cast pos (TInt pos) res1) res2)
         else if left == right then
-          case left of
-            TVoid _ -> lift $ throwError (OperationTypesMismatchException pos left right)
-            TClass _ _ -> lift $ throwError (OperationTypesMismatchException pos left right)
-            -- TODO Think about converting tbyte to tint
-            _ -> return (Ram pos op res1 res2, typeOp)
+          case (left, op) of
+            (TVoid _, _) -> lift $ throwError (OperationTypesMismatchException pos left right)
+            (TClass _ _, _) -> lift $ throwError (OperationTypesMismatchException pos left right)
+            (TByte _, Div _) -> checkExprTypes (Ram pos op (Cast pos (TInt pos) res1) (Cast pos (TInt pos) res2))
+            (TByte _, Mod _) -> checkExprTypes (Ram pos op (Cast pos (TInt pos) res1) (Cast pos (TInt pos) res2))
+            (_, _) -> return (Ram pos op res1 res2, typeOp)
         else
           lift $ throwError (OperationTypesMismatchException pos left right)
 checkExprTypes (Var pos id) = 
@@ -658,7 +641,7 @@ checkExprTypes (Var pos id) =
             let clsName = getClassTypeName currc
             elemType <- getElementTypeM pos False (Ident clsName) id (css env)
             case elemType of
-              Just et -> return (Elem pos (Var pos (Ident "this")) id (Just clsName), et)
+              Just et -> return (Elem pos (Var pos (Ident "self")) id (Just clsName), et)
               Nothing ->
                 case getFun id env of
                   Nothing -> lift $ throwError (UnexpectedTokenException pos id)
