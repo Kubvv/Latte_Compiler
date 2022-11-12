@@ -69,15 +69,17 @@ syntaxCheck out file =
 runFrontCheck :: String -> Abs.Program -> IO ()
 runFrontCheck out prog = 
   do
-    case runExcept $ checkTypes (convertProg prog) of
+    case runExceptT $ checkTypes (convertProg prog) of
       Right (t, cs) -> runOptimizer out t cs 
       Left err -> exitErrWithMessage (show err) True
 
 runOptimizer :: String -> A.Program -> [Class] -> IO ()
 runOptimizer out prog cs =
   do
-    case runExcept $ optimize prog of
-      Right t -> exitSuccess
+    case runExceptT $ optimize prog of
+      Right t -> do
+        hPutStrLn stderr "OK"
+        exitSuccess
       Left err -> exitErrWithMessage (show err) True
 
 main :: IO ()
