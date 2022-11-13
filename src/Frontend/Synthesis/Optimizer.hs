@@ -125,7 +125,7 @@ cutInitConst ((typ, NoInit pos id):is) =
 -- BlockS: fold every const inside a block
 -- Decl: call cutInitConst and return a function for cutStmtController
 -- Ass: cut consts in every subexpression of assignment
---   If e1 is a variable, change its type in env to dynamic if it wasn't declared inside loop,
+--   If e1 is a variable, change its type in env to dynamic if it wasn't declared inside current braces,
 --   otherwise change the variable type in env depending on e2 constructor type
 -- Ret: cut consts in returned expression
 -- Cond: eliminate dead ifs branches when conditional expression is infferable, then
@@ -150,7 +150,7 @@ cutStmtConst (Ass pos e1 e2) = do
   case e1 of
     (Var _ id) -> do
       res2 <- cutExprConst e2
-      let f = if isInside env && S.member id (insideVar env) then
+      let f = if (isInside env && S.member id (insideVar env)) || not (isInside env) then
                 modvexpr id res2
               else
                 modv id Dyn          
@@ -207,10 +207,6 @@ cutExprConst (Cast pos typ e) =
   do
     res <- cutExprConst e
     case (res, typ) of
-      (Prim pos2 (Int _ i), TByte _) | i >= 0 && i < 256 ->
-        return (Prim pos2 (Byte pos2 i)) 
-      (Prim pos2 (Byte _ b), TInt _) -> 
-        return (Prim pos2 (Int pos2 b))
       (Prim pos2 (Null _), TClass _ _) -> 
         return (Prim pos2 (Null pos2))
       _ -> return (Cast pos typ res) 
@@ -251,7 +247,6 @@ cutExprConst (NotNeg pos op e) =
   do
     res <- cutExprConst e
     case (res, op) of
-      (Prim _ (Byte _ b), Neg _) -> return (Prim pos (Byte pos (-b)))
       (Prim _ (Int _ i), Neg _) -> return (Prim pos (Int pos (-i)))
       (Prim _ (Bool _ b), Not _) -> return (Prim pos (Bool pos (not b))) 
       (_, _) -> return (NotNeg pos op res)
@@ -285,9 +280,6 @@ cutExprConst p@(Prim {}) = return p
 -- Cut a relation operation if both left and right values are known and of the same type
 -- If only the left part is known, switch it with the right part and swap the opearator
 cutRelConst :: Expr -> ConstMonad Expr
-cutRelConst (Ram pos op (Prim _ (Byte _ b1)) (Prim _ (Byte _ b2))) =
-  if getRelOperatorRes op b1 b2 then return (Prim pos (Bool pos True))
-  else return (Prim pos (Bool pos False))
 cutRelConst (Ram pos op (Prim _ (Int _ i1)) (Prim _ (Int _ i2))) =
   if getRelOperatorRes op i1 i2 then return (Prim pos (Bool pos True))
   else return (Prim pos (Bool pos False))
@@ -307,12 +299,10 @@ cutArthConst :: Expr -> ConstMonad Expr
 cutArthConst e@(Ram pos op e1 e2) = 
   do
     let lin = flattenRam e
-    liftIO $ print lin
     let lin2 = if isAddMulOperator op then
                  cutConst (L.sort lin) op
                else
                  cutConst lin op
-    liftIO $ print lin2
     let newTree = P.foldl1 (Ram pos op) lin2
     return newTree
 
@@ -334,13 +324,6 @@ flattenRam _ = []
 -- types match, in case of boolean values lazy evaluation is used when possible
 cutConst :: [Expr] -> RAMOp -> [Expr]
 cutConst [] _ = []
-cutConst (e1@(Prim pos (Byte pos2 b1)):e2@(Prim _ (Byte _ b2)):es) op = 
-  if isAddSubMulOperator op && arthRes < 256 && arthRes >= 0 then
-    cutConst (Prim pos (Byte pos2 arthRes):es) op
-  else
-    e1 : cutConst (e2:es) op
-  where
-    arthRes = getArthOperatorRes op b1 b2
 cutConst (e1@(Prim pos (Int pos2 i1)):e2@(Prim _ (Int _ i2)):es) op = 
   if isArthOperator op && arthRes < 2^31 && arthRes >= -2^31 then
     cutConst (Prim pos (Int pos2 arthRes):es) op

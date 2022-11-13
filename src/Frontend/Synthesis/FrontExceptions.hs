@@ -3,6 +3,10 @@ module FrontExceptions where
 import Ast as A
 import Position
 
+{- Front exceptions hold every possible exception that can be detected
+ - by a type checker and optimizer
+ - Each data constructor has it's own instance of show -}
+
 data FrontException =
   UnexpectedTokenException Pos Ident
   | BadTypeException Pos Type Type

@@ -25,7 +25,6 @@ data CutType = Dyn | Const Prim
 getCutTypeFromType :: Type -> CutType
 getCutTypeFromType typ =
   case typ of
-    (TByte _) -> Const (Byte Default 0)
     (TInt _) -> Const (Int Default 0)
     (TBool _) -> Const (Bool Default False)
     _ -> Const (Null Default)

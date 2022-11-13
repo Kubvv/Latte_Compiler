@@ -1,4 +1,3 @@
-{-# LANGUAGE TupleSections #-}
 module TypeCheck where
 
 import Control.Monad.Except
@@ -17,32 +16,41 @@ import Position
 
 type Inits = [(Type, Item)]
 
+-- Throw error if given type is inffered
 throwIfInffered :: Type -> ExceptMonad ()
-throwIfInffered (TInf pos) = throwError (UnexpectedVar pos)
+throwIfInffered (TVar pos) = throwError (UnexpectedVar pos)
 throwIfInffered _ = return ()
 
+-- Throw error if any element of a list is a just
 throwIfJust :: [Maybe (String, Pos)] -> ExceptMonad ()
 throwIfJust [] = return ()
 throwIfJust (Nothing:sps) = throwIfJust sps
 throwIfJust (Just (s, pos):_) = throwError (DuplicateClassElementException pos s)
 
+-- Get argument type from a given arg
 getArgType :: Arg -> ExceptMonad Type
 getArgType (Arg pos typ id) = 
   do
     throwIfInffered typ
     return typ
 
+-- Cast table describes all legal casts from one type (1) to another (2)
+-- Among the legal casts we have:
+-- Casts among the same primitive types
+-- Casts from String, Class and Array to Var
+-- Casts from Var to anything
+-- Casts that swap String type and String class with each other
+-- Casts from string and array to an object class
+-- Casts among the arrays, if they have the same type of data inside
+-- Casts among the classes, if the to type is the ancestor of a from type
+-- Casts among the functions, if every from function arg and ret can be 
+--   casted to sec function arg and ret
 castTable :: [Class] -> Type -> Type -> ExceptMonad Bool
-castTable _ (TByte _) (TByte _) = return True
-castTable _ (TByte _) (TInt _) = return True
 castTable _ (TInt _) (TInt _) = return True
 castTable _ (TBool _) (TBool _) = return True
 castTable _ (TVoid _) (TVoid _) = return True
 castTable _ (TStr _) (TStr _) = return True
-castTable _ (TStr _) (TInf _) = return True
-castTable _ (TClass _ _) (TInf _) = return True
-castTable _ (TArray _ _) (TInf _) = return True
-castTable _ (TInf _) _ = return True
+castTable _ (TVar _) _ = return True
 castTable _ (TStr _) (TClass _ (Ident "String")) = return True
 castTable _ (TClass _ (Ident "String")) (TStr _) = return True
 castTable _ (TStr _) (TClass _ (Ident "Object")) = return True
@@ -62,6 +70,15 @@ castTable cs (TFun _ ret1 argTypes1) (TFun _ ret2 argTypes2) =
   matchingMethodTypes cs ret1 ret2 argTypes1 argTypes2
 castTable _ _ _ = return False
 
+-- Checks if a class represented by string s2 is an ancestor of class represented by a string s1
+isClassParent :: [Class] -> String -> String -> ExceptMonad Bool
+isClassParent cs s1 s2 = 
+  do
+    branch <- createInheritanceBranch cs s1 []
+    return (isClassInList branch s2)
+
+-- Checks if function's ret1 and argTypes1 can be casted to another function's ret2 and argTypes2 
+-- and whether the argument count is the same
 matchingMethodTypes :: [Class] -> Type -> Type -> [Type] -> [Type] -> ExceptMonad Bool
 matchingMethodTypes cs ret1 ret2 argTypes1 argTypes2 = 
   do
@@ -69,45 +86,51 @@ matchingMethodTypes cs ret1 ret2 argTypes1 argTypes2 =
     retCast <- castTable cs ret1 ret2
     return (and argCast && retCast && length argTypes1 == length argTypes2)
 
-findElems :: ClsDef -> ExceptMonad Element
-findElems (MetDef pos typ id args block) = 
+-- Converts a ClsDef to an Element data type
+convertElems :: ClsDef -> ExceptMonad Element
+convertElems (MetDef pos typ id args block) = 
   do
     types <- mapM getArgType args
     return (Method pos typ id types)
-findElems (AtrDef pos typ id) = 
+convertElems (AtrDef pos typ id) = 
   do
     throwIfInffered typ
     return (Attribute pos id typ)
 
-findClasses :: [Def] -> ExceptMonad [Class]
-findClasses [] = return []
-findClasses ((ClsDef pos id inh elemDefs):ds) = 
+-- Look for classes among the defs and convert them to a Class data type
+convertClasses :: [Def] -> ExceptMonad [Class]
+convertClasses [] = return []
+convertClasses ((ClsDef pos id inh elemDefs):ds) = 
   do
-    elems <- mapM findElems elemDefs
-    cls <- findClasses ds
+    elems <- mapM convertElems elemDefs
+    cls <- convertClasses ds
     return (Class pos id inh elems : cls)
-findClasses ((FnDef {}):ds) = findClasses ds
+convertClasses ((FnDef {}):ds) = convertClasses ds
 
-findFunctions :: [Def] -> ExceptMonad [Function]
-findFunctions [] = return []
-findFunctions ((FnDef pos typ id args block):ds) = 
+-- Look for functions among the defs and convert them to a Function data type
+convertFunctions :: [Def] -> ExceptMonad [Function]
+convertFunctions [] = return []
+convertFunctions ((FnDef pos typ id args block):ds) = 
   do
     argTypes <- mapM getArgType args
-    funs <- findFunctions ds
+    funs <- convertFunctions ds
     return (Function pos typ id argTypes : funs)
-findFunctions ((ClsDef {}):ds) = findFunctions ds
+convertFunctions ((ClsDef {}):ds) = convertFunctions ds
 
+-- Look for every class that doesn't have a parent and link it to an Object class
 linkToObject :: [Class] -> ExceptMonad [Class]
 linkToObject [] = return []
 linkToObject ((Class pos id Nothing es):cs) = 
   do
     cls <- linkToObject cs
-    return (Class pos id (Just (Ident "Object")) es : cls)
+    return (Class pos id (Just (Ident "Object")) es:cls)
 linkToObject (c:cs) = 
   do
     cls <- linkToObject cs
     return (c:cs)
 
+-- Check recursively if a given class does not inherit after its indirect child, 
+-- if it does - throw an error
 findCyclicInheritance :: [String] -> [Class] -> Class -> ExceptMonad ()
 findCyclicInheritance _ _ (Class _ _ Nothing _) = return ()
 findCyclicInheritance childs cs (Class pos (Ident s) (Just inhid@(Ident id2)) _) = 
@@ -115,13 +138,15 @@ findCyclicInheritance childs cs (Class pos (Ident s) (Just inhid@(Ident id2)) _)
     throwError (CyclicInheritanceException pos inhid)
   else
     findCyclicInheritance (s:childs) cs (head $ P.filter (\(Class _ (Ident x) _ _) -> x == id2) cs)
-  
+
+-- Look for a main function and throw error if it's absent or has a wrong type
 findMain :: [Function] -> ExceptMonad ()
 findMain [] = throwError NoMainException
 findMain ((Function _ (TInt pos) (Ident "main") []):fs) = return ()
 findMain ((Function pos _ (Ident "main") _):fs) = throwError (WrongMainDefinitionException pos)
 findMain (f:fs) = findMain fs
 
+-- Check if a given list has no string duplicates - if it does, return the first occurred repeat
 isUnique :: Set String -> [(String, Pos)] -> Maybe (String, Pos)
 isUnique _ [] = Nothing
 isUnique set ((s, pos):sps) = 
@@ -130,6 +155,11 @@ isUnique set ((s, pos):sps) =
   else
     isUnique (S.insert s set) sps
 
+-- TODO this function may be wrong due to bad sorting
+-- Check if a given sorted list of (elements, depths) abide the rules of inheritance:
+-- There shouldn't be any attribute repetitions
+-- There cannot be a method named the same as an attribute in parent class and vice versa
+-- If methods are named the same, their types must be the same
 isCorrectInheritance :: [Class] -> [(Element, Int)] -> ExceptMonad ()
 isCorrectInheritance _ [] = return ()
 isCorrectInheritance _ ((Attribute pos id@(Ident x) _, _):(Attribute _ (Ident y) _, _):_) | x == y =
@@ -147,6 +177,9 @@ isCorrectInheritance cs ((Method pos ret1 id@(Ident x) types1, _):m@(Method _ re
       throwError (WrongOverridenMethodType pos id)
 isCorrectInheritance cs (ei:eis) = isCorrectInheritance cs eis
 
+-- Check if all classes names have a unique name, all their elements have a 
+-- unique name among the same class and all elements abide the rules of inheritance
+-- (explained in isCorrectInheritance), if any is not true, throw an error
 checkClassNames :: [Class] -> ExceptMonad ()
 checkClassNames cs =
   do
@@ -162,6 +195,7 @@ checkClassNames cs =
     let sortInhElems = P.map sort inhElems
     mapM_ (isCorrectInheritance cs) sortInhElems
 
+-- Check if every declared + predefined function have a unique name, if not - throw an error
 checkFunctionNames :: [Function] -> ExceptMonad ()
 checkFunctionNames fs =
   do
@@ -171,11 +205,13 @@ checkFunctionNames fs =
     unless (fst unq == "") $
       throwError (DuplicateFunctionException (snd unq) (Ident (fst unq)))
 
+-- Find a class represented by a string - if absent, throw an error
 findClassInList :: [Class] -> String -> ExceptMonad Class
 findClassInList [] s = throwError (NoClassException s)
 findClassInList (c@(Class _ (Ident x) _ _):cs) s =
   if x == s then return c else findClassInList cs s
 
+-- Create a list of classes that are ancestors to a given class represented by a string
 createInheritanceBranch :: [Class] -> String -> [Class] -> ExceptMonad [Class]
 createInheritanceBranch cs s acc =
   do
@@ -186,17 +222,19 @@ createInheritanceBranch cs s acc =
     else
       createInheritanceBranch cs (showIdent $ fromJust inh) (foundClass:acc)
 
-isClassParent :: [Class] -> String -> String -> ExceptMonad Bool
-isClassParent cs s1 s2 = 
-  do
-    branch <- createInheritanceBranch cs s1 []
-    return (isClassInList branch s2)
-
+-- Main function for the typecheck class, it does the following steps:
+-- Gets all classes and functions declared in the program
+-- Checks whether all functions have a unique name
+-- Appends Object class to all parentless classes
+-- Checks whether all classes and their elements have correct names
+-- Looks for any cyclic inheritance
+-- Runs the proper typechecker for a program tree
+-- Returns a modified program tree and a list of classes
 checkTypes :: Program -> ExceptMonad (Program, [Class])
 checkTypes p@(Program pos defs) = 
   do
-    clsDefs <- findClasses defs
-    funDefs <- findFunctions defs
+    clsDefs <- convertClasses defs
+    funDefs <- convertFunctions defs
     let funs = appendDefaultFunctions funDefs
     checkFunctionNames funs
     findMain funs
@@ -207,6 +245,7 @@ checkTypes p@(Program pos defs) =
     res <- runReaderT (checkProgramTypes p) (Env M.empty cls funs Nothing Nothing)
     return (res, cls)
 
+-- Check if a given type is a correct latte type, if not - throw an exception
 isCorrectType :: Type -> TypeCheckMonad ()
 isCorrectType (TArray _ typ) = isCorrectType typ
 isCorrectType (TClass pos (Ident s)) =
@@ -216,20 +255,24 @@ isCorrectType (TClass pos (Ident s)) =
       lift $ throwError (NoTypeException pos s)
 isCorrectType _ = return ()
 
+-- Throw error if given type is inffered
 throwIfInfferedM :: Type -> TypeCheckMonad ()
-throwIfInfferedM (TInf pos) = lift $ throwError (UnexpectedVar pos)
+throwIfInfferedM (TVar pos) = lift $ throwError (UnexpectedVar pos)
 throwIfInfferedM _ = return ()
 
+-- Throw error if given type is void
 throwIfVoid :: Type -> TypeCheckMonad ()
 throwIfVoid (TVoid pos) = lift $ throwError (UnexpectedVoid pos)
 throwIfVoid _ = return ()
 
+-- Get argument type from a given arg
 getArgTypeM :: Arg -> TypeCheckMonad Type
 getArgTypeM (Arg pos typ id) = 
   do
     throwIfInfferedM typ
     return typ
 
+-- Check recursively if every argument from a list has a unique name, if not - throw an error
 uniqueArgs :: Set String -> [Arg] -> TypeCheckMonad ()
 uniqueArgs _ [] = return ()
 uniqueArgs set (Arg pos _ id@(Ident s):as) =
@@ -238,6 +281,8 @@ uniqueArgs set (Arg pos _ id@(Ident s):as) =
   else
     uniqueArgs (S.insert s set) as
 
+-- Recursively check that if ident in the given list of inits has a unique name
+-- and it doesn't have a 'self' name, which is internally used to represent the class
 throwIfVarRepeated :: S.Set String -> M.Map Ident Pos -> Inits -> TypeCheckMonad (Set String, Map Ident Pos)
 throwIfVarRepeated set map [] = return (set, map)
 throwIfVarRepeated set map (dc:dcs) =
@@ -253,6 +298,8 @@ throwIfVarRepeated set map (dc:dcs) =
     else
       throwIfVarRepeated (S.insert sid set) (M.insert id (getTypePos (fst dc)) map) dcs
 
+-- Check if every declared variable in the list of statements has a unique name using
+-- a helper 'throwIfVarRepeated' function
 isNoVarRedefinition :: S.Set String -> M.Map Ident Pos -> [Stmt] -> TypeCheckMonad ()
 isNoVarRedefinition _ _ [] = return ()
 isNoVarRedefinition set map ((Decl pos decs):sts) =
@@ -261,6 +308,7 @@ isNoVarRedefinition set map ((Decl pos decs):sts) =
     isNoVarRedefinition newSet newMap sts
 isNoVarRedefinition set map (_:sts) = isNoVarRedefinition set map sts
 
+-- Check if two given types (from, to) are castable, if not - throw an error
 throwIfNoCast :: Pos -> Type -> Type -> [Class] -> TypeCheckMonad ()
 throwIfNoCast pos typ1 typ2 cs =
   do
@@ -268,17 +316,22 @@ throwIfNoCast pos typ1 typ2 cs =
     unless res $
       lift $ throwError (BadTypeException pos typ1 typ2)
 
-throwIfBadExprCast :: Type -> Type -> [Class] -> TypeCheckMonad ()
-throwIfBadExprCast (TByte pos) (TInt pos2) _ = return ()
-throwIfBadExprCast (TClass pos (Ident "Object")) (TArray pos2 typ) _ = return ()
-throwIfBadExprCast c1@(TClass pos (Ident s1)) c2@(TClass pos2 (Ident s2)) cs =
+-- TODO comment
+throwIfBadExprCast :: Type -> Type -> [Class] -> Pos -> TypeCheckMonad ()
+throwIfBadExprCast (TClass pos (Ident "Object")) (TArray pos2 typ) _ _ = return () -- TODO do wywalenia?
+throwIfBadExprCast c1@(TClass pos (Ident s1)) c2@(TClass pos2 (Ident s2)) cs pos3 =
   do
     b1 <- lift $ isClassParent cs s1 s2
     b2 <- lift $ isClassParent cs s2 s1
     when (not b1 && not b2) $
-      throwError (BadTypeException pos c1 c2)
-throwIfBadExprCast typ1 typ2 cs = throwIfNoCast (getTypePos typ1) typ2 typ1 cs
+      throwError (BadTypeException pos3 c1 c2)
+throwIfBadExprCast typ1 typ2 cs pos =
+  do
+    res <- lift $ castTable cs typ2 typ1 --TODO I don't know if it makes sense to swap
+    unless res $
+      lift $ throwError (BadTypeException pos typ1 typ2)
 
+-- Check if two given types are the same by trying to cast one to another and vice versa
 isEqType :: Type -> Type -> [Class] -> TypeCheckMonad Bool
 isEqType typ1 typ2 cs =
   do
@@ -286,6 +339,8 @@ isEqType typ1 typ2 cs =
     b2 <- lift $ castTable cs typ2 typ1
     return (b1 && b2)
 
+-- Look through a given list of elements in search of a attribute named id, if it's absent
+-- or is a method, throw an error
 throwIfNotAttribute :: Pos -> Ident -> [Element] -> TypeCheckMonad ()
 throwIfNotAttribute pos id [] = lift $ throwError (AssignmentToMissingAttributeException pos id)
 throwIfNotAttribute pos id@(Ident y) (Attribute _ (Ident x) _:es) =
@@ -299,6 +354,8 @@ throwIfNotAttribute pos id@(Ident y) (Method _ _ (Ident x) _:es) =
   else
     throwIfNotAttribute pos id es
 
+-- Throw if a given expression is not a left value - accept the lvalue if it's ArrAcs or
+-- var, accept the element access expr if it's not an array and the accessed attribute exists
 throwIfNoLeftValue :: Pos -> Expr -> TypeCheckMonad ()
 throwIfNoLeftValue pos (Elem epos e id (Just cls)) =
   do
@@ -312,12 +369,23 @@ throwIfNoLeftValue pos (ArrAcs {}) = return ()
 throwIfNoLeftValue pos (Var {}) = return ()
 throwIfNoLeftValue pos _ = lift $ throwError (NotALeftValueException pos)
 
+{- All of the following functions are used as typecheckers for all types of
+ - program constructions
+ - As the ast program tree may change during the typecheck we're obliged to
+ - return the corresponding data we're checking -}
+
+-- Program checks all the definitions it contains
 checkProgramTypes :: Program -> TypeCheckMonad Program
 checkProgramTypes (Program pos defs) =
   do
     newDefs <- mapM checkDefTypes defs
     return (Program pos newDefs)
 
+-- FnDef: Check if return and arguments have a correct type and
+--    make sure that the args are not of type void, then perform a check
+--    on a function block with the function visible inside the block
+-- ClsDef: Check if declared parent class is a correct type, then
+--    perform a check on all elements with the class visible as 'self'
 checkDefTypes :: Def -> TypeCheckMonad Def
 checkDefTypes (FnDef pos ret id args block) =
   do
@@ -335,6 +403,10 @@ checkDefTypes (ClsDef pos id inh es) =
     res <- local (putClassToVarMap pos id) (mapM checkElementTypes es)
     return (ClsDef pos id (Just inhId) res)
 
+-- MetDef: Check if return and arguments have a correct type and
+--    make sure that the args are not of type void, then perform a check
+--    on a method block with the method visible inside the block
+-- AtrDef: Check if declared attribute is of correct type and is not void
 checkElementTypes :: ClsDef -> TypeCheckMonad ClsDef
 checkElementTypes (MetDef pos ret id args block) =
   do
@@ -345,13 +417,14 @@ checkElementTypes (MetDef pos ret id args block) =
     mapM_ throwIfVoid argTypes
     res <- local (putFunctionToVarMap ret args) (checkBlockTypes block)
     return (MetDef pos ret id args res)
-
 checkElementTypes (AtrDef pos typ id) =
   do
     isCorrectType typ
     throwIfVoid typ
     return (AtrDef pos typ id)
 
+-- Check if there are no var redefinitions inside the block (two identical
+--    names declared) and then check the stmts using a special controller
 checkBlockTypes :: Block -> TypeCheckMonad Block
 checkBlockTypes (Block pos stmts) = 
   do
@@ -359,6 +432,10 @@ checkBlockTypes (Block pos stmts) =
     res <- stmtController stmts
     return (Block pos res)
 
+-- Stmt controller allows for performing a single statement check and
+--    applying the change in environment for the remaining statement
+--    checks, effectively allowing for items to be visible after their
+--    declartaion
 stmtController :: [Stmt] -> TypeCheckMonad [Stmt]
 stmtController [] = return []
 stmtController (st:sts) =
@@ -367,6 +444,16 @@ stmtController (st:sts) =
     reses <- local change (stmtController sts)
     return (res:reses)
 
+-- NoInit: Check that the declared type is correct and is not an var or a void,
+--   then put the declared item to the varMap and perform a tail recursion
+-- Init: Check that the declared type is correct and is not a void,
+--   then check the subexpression and make sure it's not a null when declared
+--   type was var, then if the declared type was var then change the type to
+--   the evaluated type from e, put the item to the varMap and perform a tail recursion
+--   if the declared type was not a var, check that the expression type can be casted
+--   to declared type, then if the types are the same then put the declared item to
+--   varMap and perform the tail recursion, otherwise add a cast expression in the
+--  subexpression and perform a tail recursion 
 checkInitTypes :: Inits -> TypeCheckMonad (Inits, Env -> Env)
 checkInitTypes [] = return ([], id)
 checkInitTypes (i@(typ, NoInit pos id):is) = 
@@ -397,6 +484,21 @@ checkInitTypes ((typ, Init pos id e):is) =
       (resItems, f) <- local (putv id typ) (checkInitTypes is)
       return ((typ, Init pos id newRes):resItems, putv id typ . f)
 
+-- Empty: pass
+-- BlockS: perform a check on a block
+-- Decl: check the declarations using checkInitTypes
+-- Ass: check both subexpressions and check if the e2 type can be casted
+--    to e1 type and check if the e1 is a correct lvalue
+-- Ret: check if we expect a return here, whether the subexpression
+--    type is not a void and can be casted to expected return type, then
+--    add a cast to a subexpression if it's needed
+-- RetV: check if we expect a return here and if the expected return is 
+--    of type void
+-- Cond: throw an error if any of the substatement is a declaration or when
+--    the if condition is not of type bool, then typecheck the substatments
+-- While: throw an error if the substatement is a declaration or when
+--    the if condition is not of type bool, then typecheck the substatment
+-- ExprS: typecheck the subexpression
 checkStmtTypes :: Stmt -> TypeCheckMonad (Stmt, Env -> Env)
 checkStmtTypes (Empty pos) = return (Empty pos, id)
 checkStmtTypes (BlockS pos b) = 
@@ -414,14 +516,7 @@ checkStmtTypes (Ass pos e1 e2) =
     (rese2, e2type) <- checkExprTypes e2
     throwIfNoCast pos e2type e1type (css env)
     throwIfNoLeftValue pos rese1
-    isEq <- isEqType e1type e2type (css env)
-    if isEq then 
-      return (Ass pos rese1 rese2, id)
-    else
-      case e1type of
-        TByte _ -> return (Ass pos rese1 (Cast pos e1type rese2), id)
-        TInt _ -> return (Ass pos rese1 (Cast pos e1type rese2), id)
-        _ -> return (Ass pos rese1 rese2, id)
+    return (Ass pos rese1 rese2, id)
 checkStmtTypes (Ret pos e) = 
   do
     env <- ask
@@ -473,6 +568,9 @@ checkStmtTypes (ExprS pos e) =
     (res, _) <- checkExprTypes e
     return (ExprS pos res, id)
 
+-- Find the given element ident among the inheritance branch of a given ident class, 
+--    if it's absent, throw if the excpetFlag is on or return nothing if it's off,
+--    otherwise return the type of a found element
 getElementTypeM :: Pos -> Bool -> Ident -> Ident -> [Class] -> TypeCheckMonad (Maybe Type)
 getElementTypeM pos exceptFlag clsId@(Ident s1) id@(Ident s2) cs = 
   do 
@@ -486,6 +584,30 @@ getElementTypeM pos exceptFlag clsId@(Ident s1) id@(Ident s2) cs =
     else
       return (Just $ getElementType $ head foundElem)
 
+-- Cast: check if a given type is correct and non void and non var, then check 
+--    if the cast is possible, then check the subexpression and if it turns out to 
+--    be a null, skip the cast or if it turns out to be a correct cast, fold it
+-- ArrAcs: check both subexpressions and throw an error if e1 type is not an array
+--    or e2 type is not an int, then return an array with saved type of what's inside
+-- App: check the subexpression, if its type turns out to not be a function, throw, then
+--    check if passed arguments are correct and can be casted to the saved argument types, 
+--    then check if the arguments count matches
+-- Elem: Check the subexpression and make sure it's not a primitive type, then
+--    check if the accessed element is not a elem or elemSize from the array object,
+--    then check if the accessed element is present in the inheritance branch of the class
+-- New: Check if the given type is correct and is not a void, then if the me is present
+--    check if the array initialization is correct (the expression result can be casted to int)
+--    if me is absent, make sure that the given type is a class
+-- NotNeg: Make sure that the calculated subexpression type is an int if the operation is neg and
+--    a bool if the operation is null
+-- Ram: Accept all possible combinations of left, right and op type (usually equals among the 
+--    classes or a concatenation of strings) by swapping them to a class method call, otherwise
+--    keep the ram expression if the types of left and right are equal and exprs 
+--    type corresponds to operation
+-- Var: Check if the referenced var exists in a varMap, is an element of the current class or
+--    is a default function, if non apply, throw an error
+-- Prim: If the primitive type is int, check that the used number does not cross the overflow limit,
+--    otherwise pass
 checkExprTypes :: Expr -> TypeCheckMonad (Expr, Type)
 checkExprTypes (Cast pos typ e) = 
   do
@@ -495,7 +617,7 @@ checkExprTypes (Cast pos typ e) =
     when (isInfType typ) $
       lift $ throwError (CastToVarException pos)
     (res, resType) <- checkExprTypes e
-    throwIfBadExprCast resType typ (css env)
+    throwIfBadExprCast resType typ (css env) pos
     case res of
       (Prim _ (Null _)) -> return (res, typ)
       (Cast _ _ e2) -> return (Cast pos typ e2, typ)
@@ -508,7 +630,6 @@ checkExprTypes (ArrAcs pos e1 e2 mtyp) =
       lift $ throwError (NotAnArrayException pos arrType)
     let typOfArray = getArrInsideType arrType
     case indType of
-      (TByte _) -> return (ArrAcs pos arr (Cast pos (TInt Default) ind) (Just typOfArray), typOfArray)
       (TInt _) -> return (ArrAcs pos arr ind (Just typOfArray), typOfArray)
       _ -> lift $ throwError (ArrayIndexNotNumericalException pos indType)
 checkExprTypes (App pos e args) = 
@@ -533,7 +654,7 @@ checkExprTypes (Elem pos e id@(Ident s) mc) =
     when (isPrimType resType) $
       throwError (PrimitiveTypeElementAccessException pos resType)
     let classId = createClassIdent resType
-    when (showIdent classId == "Array" && (s /= "length" && s /= "elem" && s /= "elemSize")) $
+    when (showIdent classId == "Array" && (s /= "length")) $
       lift $ throwError (NoClassElementException pos classId id)
     elemType <- getElementTypeM pos True classId id (css env)
     return (Elem pos res id (Just (showIdent classId)), fromJust elemType)
@@ -559,11 +680,10 @@ checkExprTypes (NotNeg pos op e) =
   do
     (res, resType) <- checkExprTypes e
     case (op, resType) of
-      (Neg _, TByte _) -> return (NotNeg pos op res, resType)
       (Neg _, TInt _) -> return (NotNeg pos op res, resType)
       (Neg _, _) -> lift $ throwError (NegateNonNumException pos resType)
       (Not _, TBool _) -> return (NotNeg pos op res, resType)
-      (Not _, TByte _) -> lift $ throwError (NegateNonBoolException pos resType)
+      (Not _, _) -> lift $ throwError (NegateNonBoolException pos resType)
 checkExprTypes (Ram pos op e1 e2) = 
   do
     (res1, resType1) <- checkExprTypes e1
@@ -589,9 +709,9 @@ checkExprTypes (Ram pos op e1 e2) =
         return (App pos (Elem pos res1 (Ident "equals") (Just x)) [res2], TBool Default)
       (Equ _, TClass _ (Ident x), TStr _) ->
         return (App pos (Elem pos res1 (Ident "equals") (Just x)) [res2], TBool Default)
-      (Equ _, TInf _, TClass _ _) ->
+      (Equ _, TVar _, TClass _ _) ->
         return (Ram pos op res1 res2, TBool Default)
-      (Equ _, TClass _ _, TInf _) ->
+      (Equ _, TClass _ _, TVar _) ->
         return (Ram pos op res1 res2, TBool Default)
       (Neq _, TClass _ (Ident "String"), TStr _) ->
         return (NotNeg pos (Not pos) (App pos (Elem pos res1 (Ident "equals") (Just "String")) [res2]), TBool Default)
@@ -605,25 +725,24 @@ checkExprTypes (Ram pos op e1 e2) =
         return (NotNeg pos (Not pos) (App pos (Elem pos res1 (Ident "equals") (Just x)) [res2]), TBool Default)
       (Neq _, TClass _ (Ident x), TStr _) ->
         return (NotNeg pos (Not pos) (App pos (Elem pos res1 (Ident "equals") (Just x)) [res2]), TBool Default)
-      (Neq _, TInf _, TClass _ _) ->
+      (Neq _, TVar _, TClass _ _) ->
         return (Ram pos op res1 res2, TBool Default)
-      (Neq _, TClass _ _, TInf _) ->
+      (Neq _, TClass _ _, TVar _) ->
+        return (Ram pos op res1 res2, TBool Default)
+      (And _, TBool _, TBool _) ->
+        return (Ram pos op res1 res2, TBool Default)
+      (Or _, TBool _, TBool _) ->
+        return (Ram pos op res1 res2, TBool Default)
+      (Equ _, TBool _, TBool _) ->
+        return (Ram pos op res1 res2, TBool Default)
+      (Neq _, TBool _, TBool _) ->
         return (Ram pos op res1 res2, TBool Default)
       (op, left, right) -> do
         let typeOp = getTypeFromRamOp left op
-        if isIntType left && isByteType right then
-          checkExprTypes (Ram pos op res1 (Cast pos (TInt pos) res2))
-        else if isIntType right && isByteType left then
-          checkExprTypes (Ram pos op (Cast pos (TInt pos) res1) res2)
-        else if left == right then
-          case (left, op) of
-            (TVoid _, _) -> lift $ throwError (OperationTypesMismatchException pos left right)
-            (TClass _ _, _) -> lift $ throwError (OperationTypesMismatchException pos left right)
-            (TByte _, Div _) -> checkExprTypes (Ram pos op (Cast pos (TInt pos) res1) (Cast pos (TInt pos) res2))
-            (TByte _, Mod _) -> checkExprTypes (Ram pos op (Cast pos (TInt pos) res1) (Cast pos (TInt pos) res2))
-            (_, _) -> return (Ram pos op res1 res2, typeOp)
-        else
-          lift $ throwError (OperationTypesMismatchException pos left right)
+        case (left, right) of
+          (TStr _, TStr _) -> return (Ram pos op res1 res2, typeOp)
+          (TInt _, TInt _) -> return (Ram pos op res1 res2, typeOp)
+          (_, _) -> lift $ throwError (OperationTypesMismatchException (getRamOpPos op) left right)
 checkExprTypes (Var pos id) = 
   do
     env <- ask
@@ -648,9 +767,7 @@ checkExprTypes (Var pos id) =
                   Just (Function pos2 retType _ argTypes) -> return (Var pos id, TFun pos2 retType argTypes)
 checkExprTypes (Prim pos (Int pos2 i)) = 
   do
-    if i >= 0 && i < 256 then
-      return (Prim pos (Byte pos2 i), TByte pos)
-    else if i < -(2^31) || i >= (2^31) then
+    if i < -(2^31) || i >= (2^31) then
       lift $ throwError (ConstantOverflowException pos)
     else
       return (Prim pos (Int pos2 i), TInt pos)

@@ -7,32 +7,46 @@ import Data.Char
 import AbsLatte as Abs
 import Position
 
+{- Ast holds a custom representation of a program tree
+ - Ast is obtained from converting a bnfc auto-generated tree
+ - during the conversion there are some small optimizations, such as
+ - swapping for statement to a while statement, swapping if statement to
+ - if else statement, adding new elements to some constructors which hold 
+ - extra infromation, swapping every bnfc position to pos etc. 
+ - Each data has a custom instance of eq and print as well as a function
+ - to convert from bnfc program tree and some getters -}
+
 class Print x where
   prnt :: Int -> x -> String
 
 -- --< Program >-- --
+
+-- Program remains unchanged
 data Program = Program Pos [Def]
   deriving (Ord, Show, Read)
 
--- instance Functor Ast.Program where
---   fmap f (Program pos defs) = Program (f pos) (fmap (fmap f) defs)
-
+-- Program Instances
 instance Print Ast.Program where
   prnt _ (Program _ defs) = intercalate "\n" (map (prnt 0) defs)
 
 instance Eq Ast.Program where
   (==) (Ast.Program _ defs1) (Ast.Program _ defs2) = and $ zipWith (==) defs1 defs2
 
+-- Program converter
 convertProg :: Abs.Program -> Ast.Program
 convertProg (Abs.PProgram bnfc defs) = Program (toPos bnfc) (map convertDefs defs)
 
 
 -- --< Definitions >-- --
+
+-- FnDef remains unchanged
+-- ClsDef has a maybe instead of empty or ident, which removes the need for ClsInh data
 data Def = 
     FnDef Pos Ast.Type Ast.Ident [Ast.Arg] Ast.Block
   | ClsDef Pos Ast.Ident (Maybe Ast.Ident) [ClsDef]
   deriving (Ord, Show, Read)
 
+-- Def instances
 instance Print Def where
   prnt _ (Ast.FnDef _ typ id args block) = concat [prnt 0 typ, " ", prnt 0 id, "(", intercalate ", " (map (prnt 0) args), ")\n", prnt 1 block]
   prnt _ (Ast.ClsDef _ id inh cdefs) = concat ["class ", prnt 0 id, maybe "" (\i -> " extends " ++ prnt 0 i) inh, "\n{\n", intercalate "\n" (map (prnt 1) cdefs), "\n}"]
@@ -42,41 +56,43 @@ instance Eq Def where
   (==) (Ast.ClsDef _ id1 inh1 cdefs1) (Ast.ClsDef _ id2 inh2 cdefs2) = id1 == id2 && inh1 == inh2 && and (zipWith (==) cdefs1 cdefs2)
   (==) _ _ = False
 
-inhToMaybe :: Abs.ClsInh -> Maybe Ast.Ident
-inhToMaybe (Abs.NoInh bnfc) = Nothing
-inhToMaybe (Abs.Inh bnfc id) = Just (convertIdent id)
-
+-- Def converter
 convertDefs :: Abs.TopDef -> Def
 convertDefs (Abs.FnDef bnfc typ id args block) = Ast.FnDef (toPos bnfc) (convertType typ) (convertIdent id) (map convertArg args) (convertBlock block)
 convertDefs (Abs.ClsDef bnfc id inh cdefs) = Ast.ClsDef (toPos bnfc) (convertIdent id) (inhToMaybe inh) (map convertClsDef cdefs)
 
+inhToMaybe :: Abs.ClsInh -> Maybe Ast.Ident
+inhToMaybe (Abs.NoInh bnfc) = Nothing
+inhToMaybe (Abs.Inh bnfc id) = Just (convertIdent id)
+
+
 -- --< Argument >-- --
+
+-- Arg remains unchanged
 data Arg = Arg Pos Ast.Type Ast.Ident
   deriving (Ord, Show, Read)
 
--- instance Functor Ast.Arg where
---   fmap f (Arg pos typ id) = Arg (f pos) (fmap f typ) id
-
+-- Arg instances
 instance Print Ast.Arg where
   prnt _ (Arg _ typ id) = concat [prnt 0 typ, " ", prnt 0 id]
 
 instance Eq Ast.Arg where
   (==) (Arg _ typ1 id1) (Arg _ typ2 id2) = typ1 == typ2 && id1 == id2
 
+-- Arg Converter
 convertArg :: Abs.Arg -> Ast.Arg
 convertArg (Abs.VArg bnfc typ id) = Arg (toPos bnfc) (convertType typ) (convertIdent id) 
 
 
 -- --< ClassDefinitions >-- --
+
+-- All constructors remain unchanged
 data ClsDef =
     MetDef Pos Ast.Type Ast.Ident [Ast.Arg] Ast.Block
   | AtrDef Pos Ast.Type Ast.Ident
   deriving (Ord, Show, Read)
 
--- instance Functor ClsDef where
---   fmap f (Ast.MetDef pos typ id args block) = Ast.MetDef (f pos) (fmap f typ) id (fmap (fmap f) args) (fmap f block)
---   fmap f (Ast.AtrDef pos typ id) = Ast.AtrDef (f pos) (fmap f typ) id
-
+-- ClsDef instances
 instance Print ClsDef where
   prnt tabs (Ast.MetDef _ typ id args block) = concat [replicate tabs '\t', prnt 0 typ, " ", prnt 0 id, "(", intercalate ", " (map (prnt 0) args), ")\n", prnt (tabs+1) block]
   prnt tabs (Ast.AtrDef _ typ id) = concat [replicate tabs '\t', prnt 0 typ, " ", prnt 0 id, ";"]
@@ -86,26 +102,39 @@ instance Eq ClsDef where
   (==) (Ast.AtrDef _ typ1 id1) (Ast.AtrDef _ typ2 id2) = typ1 == typ2 && id1 == id2
   (==) _ _ = False
 
+-- ClsDef converter
 convertClsDef :: Abs.ClsElemDef -> ClsDef
 convertClsDef (Abs.MetDef bnfc typ id args block) = Ast.MetDef (toPos bnfc) (convertType typ) (convertIdent id) (map convertArg args) (convertBlock block)
 convertClsDef (Abs.AtrDef bnfc typ id) = Ast.AtrDef (toPos bnfc) (convertType typ) (convertIdent id)
 
 
 -- --< Block >-- --
+
+-- Block remains unchanged
 data Block = Block Pos [Ast.Stmt]
   deriving (Ord, Show, Read)
 
+-- Block instances
 instance Print Ast.Block where
   prnt tabs (Block _ stmts) = concat [replicate (tabs-1) '\t', "{\n", intercalate "\n" (map (prnt tabs) stmts), "\n", replicate (tabs-1) '\t', "}"]
 
 instance Eq Ast.Block where
   (==) (Block _ stmts1) (Block _ stmts2) = and $ zipWith (==) stmts1 stmts2
 
+-- Block converter
 convertBlock :: Abs.Block -> Ast.Block
 convertBlock (Abs.BBlock bnfc stmts) = Block (toPos bnfc) (map convertStmt stmts)
 
 
 -- --< Statements >-- --
+
+-- Decl statement declaration items are merged with their type
+-- Incr is replaced with an assignment var = var + 1
+-- Decr is replaced with an assignment var = var - 1
+-- Cond is removed and replaced with CondElse and since Cond is gone, CondElse is now named Cond
+-- For is swapped to a block of two statements: declaration of two control variables and a while loop
+--   which increments the first variable value by one at the end of the loop
+-- Rest remains unchanged
 data Stmt =
     Empty Pos
   | BlockS Pos Ast.Block
@@ -118,6 +147,7 @@ data Stmt =
   | ExprS Pos Ast.Expr
   deriving (Ord, Show, Read)
 
+-- Stmt instances
 instance Print Ast.Stmt where
   prnt tabs (Ast.Empty _) = replicate tabs '\t' ++ ";"
   prnt tabs (BlockS _ block) = prnt (tabs+1) block
@@ -141,6 +171,7 @@ instance Eq Ast.Stmt where
   (==) (ExprS _ e1) (ExprS _ e2) = e1 == e2
   (==) _ _ = False
 
+-- Stmt converter
 convertStmt :: Abs.Stmt -> Ast.Stmt
 convertStmt (Abs.Empty bnfc) = Ast.Empty (toPos bnfc)
 convertStmt (Abs.BStmt bnfc block) = BlockS (toPos bnfc) (convertBlock block)
@@ -155,7 +186,7 @@ convertStmt (Abs.CondElse bnfc e s1 s2) = Ast.Cond (toPos bnfc) (convertExpr e) 
 convertStmt (Abs.While bnfc e s) = Ast.While (toPos bnfc) (convertExpr e) (convertStmt s)
 convertStmt (Abs.For bnfc typ id@(Abs.Ident x) e s) = BlockS pos (Block pos [ -- TODO better names for idents
   Ast.Decl pos [
-    (TInt pos, Ast.Init pos (createIdent ("a_" ++ x)) (Prim pos (Int pos 0))), (TInf pos, Ast.Init pos (createIdent ("b_" ++ x)) (convertExpr e))
+    (TInt pos, Ast.Init pos (createIdent ("a_" ++ x)) (Prim pos (Int pos 0))), (TVar pos, Ast.Init pos (createIdent ("b_" ++ x)) (convertExpr e))
     ],
   Ast.While pos (
     Ram pos (Lt pos) (Ast.Var pos (createIdent ("a_" ++ x))) (Elem pos (Ast.Var pos (createIdent ("b_" ++ x))) (Ast.Ident "length") Nothing))
@@ -176,6 +207,7 @@ convertStmt (Abs.Decr bnfc e) = Ast.Ass pos newE (Ram pos (Sub pos) newE (Prim p
     newE = convertExpr e
     pos = toPos bnfc
 
+-- Stmt helper functions
 isDeclStmt :: Ast.Stmt -> Bool
 isDeclStmt (Ast.Decl {}) = True
 isDeclStmt _ = False
@@ -197,6 +229,17 @@ isVoidReturn _ = False
 
 
 -- --< Expressions >-- --
+
+-- Cast converts and holds a type instead of an Ident
+-- ELit_ is replaced with a Prim constructor (Prim = primitive)
+-- ArrAcs holds a maybe that describes the type of the values inside
+-- Elem now has a maybe string that describes the class name of a caller
+-- New has a maybe expr that can be used as an array size initialization expression
+-- EString is replaced with a Prim constructor and also has some special characters converted
+-- Neg and Not are merged into NotNeg constructor
+-- Mul, Add, Rel, And, Or are merged into Ram constructor
+-- Var remains unchanged
+-- Prim is a constructor for primitive types
 data Expr =
     Cast Pos Ast.Type Ast.Expr
   | ArrAcs Pos Ast.Expr Ast.Expr (Maybe Ast.Type)
@@ -209,6 +252,7 @@ data Expr =
   | Prim Pos Prim
   deriving (Ord, Show, Read)
 
+-- Expr instances
 instance Print Ast.Expr where
   prnt _ (Cast _ t e) = concat ["(", prnt 0 t, ")(", prnt 0 e, ")"]
   prnt _ (ArrAcs _ e1 e2 _) = concat [prnt 0 e1, "[", prnt 0 e2, "]"]
@@ -234,17 +278,17 @@ instance Eq Ast.Expr where
   (==) (Prim _ pr1) (Prim _ pr2) = pr1 == pr2
   (==) _ _ = False
 
+-- Expr converter
 convertExpr :: Abs.Expr -> Ast.Expr
 convertExpr (Abs.ECast bnfc (Abs.Ident x) e) = Cast pos newType (convertExpr e)
   where
     pos = toPos bnfc
     newType = case x of
-      "byte" -> TByte pos
       "int" -> TInt pos
       "boolean" -> TBool pos
       "void" -> TVoid pos
       "string" -> TStr pos
-      "var" -> TInf pos
+      "var" -> TVar pos
       _ -> TClass pos (Ast.Ident x)
 convertExpr (Abs.EArrAcs bnfc e1 e2) = ArrAcs (toPos bnfc) (convertExpr e1) (convertExpr e2) Nothing 
 convertExpr (Abs.EApp bnfc e1 es) = App (toPos bnfc) (convertExpr e1) (map convertExpr es)
@@ -271,6 +315,7 @@ convertExpr (Abs.ELitTrue bnfc) = Prim (toPos bnfc) (Bool (toPos bnfc) True)
 convertExpr (Abs.ELitFalse bnfc) = Prim (toPos bnfc) (Bool (toPos bnfc) False)
 convertExpr (Abs.EString bnfc s) = Prim (toPos bnfc) (Str (toPos bnfc) (convertString s))
 
+-- Converts all special characters wrriten using double back slash to regular ascii characters
 convertString :: String -> String
 convertString [] = []
 convertString ('\\':'\\':cs) = '\\' : convertString cs
@@ -284,9 +329,7 @@ convertString ('\\':cs) = let (n, css) = findn cs in chr n : convertString css
       let numstr = digitTake cs []
           num = read numstr :: Int
           css = drop (length numstr) cs
-      in case css of
-        ('\\':'&':xs) -> (num, xs)
-        _ -> (num, css) 
+      in (num, css) 
 
     digitTake (c:cs) acc = 
       if isDigit c then
@@ -298,38 +341,40 @@ convertString (c:cs) = c : convertString cs
 
 
 -- --< PrimitiveTypes >-- --
+
+-- New data Prim is used for holding primitive types as well as a null value
 data Prim =
-    Byte Pos Integer
-  | Int Pos Integer
+    Int Pos Integer
   | Bool Pos Bool
   | Str Pos String
   | Null Pos
   deriving (Ord, Show, Read)
 
+-- Prim instances
 instance Print Prim where
-  prnt _ (Byte _ i) = show i
   prnt _ (Int _ i) = show i
   prnt _ (Bool _ b) = show b
   prnt _ (Str _ s) = show s
   prnt _ (Null _) = "null"
 
 instance Eq Prim where
-  (==) (Byte _ b1) (Byte _ b2) = b1 == b2
   (==) (Int _ i1) (Int _ i2) = i1 == i2
   (==) (Bool _ b1) (Bool _ b2) = b1 == b2 
   (==) (Str _ s1) (Str _ s2) = s1 == s2
   (==) (Null _) (Null _) = True
   (==) _ _ = False
 
+-- Prim helper functions
 primToType :: Prim -> Ast.Type
-primToType (Byte pos _) = TByte pos
 primToType (Int pos _) = TInt pos
 primToType (Bool pos _) = TBool pos
 primToType (Str pos _) = TStr pos
-primToType (Null pos) = TInf pos
+primToType (Null pos) = TVar pos
 
 
 -- --< Relational-Add-Mul-Operators >-- --
+
+-- RAMOp is a new data for distinguishing between and, or, add, mul and relational operators
 data RAMOp =
     Add Pos
   | Sub Pos
@@ -346,6 +391,7 @@ data RAMOp =
   | Or Pos
   deriving (Ord, Show, Read)
 
+-- RAMOp instances
 instance Print RAMOp where
   prnt _ (Ast.Add _) = "+"
   prnt _ (Ast.Sub _) = "-"
@@ -377,6 +423,7 @@ instance Eq RAMOp where
   (==) (Or _) (Or _) = True
   (==) _ _ = False
 
+-- RAMOp converter
 convertRelational :: RelOp -> RAMOp
 convertRelational (Abs.LTH bnfc) = Lt (toPos bnfc)
 convertRelational (Abs.LE bnfc) = Le (toPos bnfc)
@@ -385,6 +432,7 @@ convertRelational (Abs.NE bnfc) = Neq (toPos bnfc)
 convertRelational (Abs.GTH bnfc) = Gt (toPos bnfc)
 convertRelational (Abs.GE bnfc) = Ge (toPos bnfc)
 
+-- RAMOp helper functions
 getTypeFromRamOp :: Ast.Type -> RAMOp -> Ast.Type
 getTypeFromRamOp _ (Lt _) = TBool Default
 getTypeFromRamOp _ (Le _) = TBool Default
@@ -461,13 +509,31 @@ getRelOperatorRes (Ast.Gt _) i1 i2 = i1 > i2
 getRelOperatorRes (Ast.Ge _) i1 i2 = i1 >= i2
 getRelOperatorRes _ _ _ = False
 
+getRamOpPos :: RAMOp -> Pos
+getRamOpPos (Ast.Add pos) = pos
+getRamOpPos (Ast.Sub pos) = pos
+getRamOpPos (Ast.Mul pos) = pos
+getRamOpPos (Ast.Div pos) = pos
+getRamOpPos (Ast.Mod pos) = pos
+getRamOpPos (Lt pos) = pos
+getRamOpPos (Le pos) = pos
+getRamOpPos (Equ pos) = pos
+getRamOpPos (Neq pos) = pos
+getRamOpPos (Gt pos) = pos
+getRamOpPos (Ge pos) = pos
+getRamOpPos (And pos) = pos
+getRamOpPos (Or pos) = pos
+
 
 -- --< Not-Neg-Operators >-- --
+
+-- NNOp is a new data for distinguishing between not and neg operators
 data NNOp =
     Neg Pos
   | Not Pos
   deriving (Ord, Show, Read)
 
+-- NNOp instances
 instance Print NNOp where
   prnt _ (Ast.Neg _) = "-"
   prnt _ (Ast.Not _) = "!"
@@ -479,31 +545,23 @@ instance Eq NNOp where
 
 
 -- --< Types >-- --
+
+-- Type data gains new constructors for primitive and function types (TInt, TBool, TStr, TFun)
+-- Rest is unchanged
 data Type = 
-    TByte Pos
-  | TInt Pos
+    TInt Pos
   | TBool Pos
   | TVoid Pos
   | TStr Pos
   | TClass Pos Ast.Ident
   | TArray Pos Ast.Type
   | TFun Pos Ast.Type [Ast.Type]
-  | TInf Pos
+  | TVar Pos
   deriving (Ord, Read)
 
--- instance Functor Ast.Type where
---   fmap f (TByte pos) = TByte (f pos)
---   fmap f (TInt pos) = TInt (f pos)
---   fmap f (TBool pos) = TBool (f pos)
---   fmap f (TVoid pos) = TVoid (f pos)
---   fmap f (TStr pos) = TStr (f pos)
---   fmap f (TClass pos id) = TClass (f pos) id
---   fmap f (TArray pos typ) = TArray (f pos) (fmap f typ)
---   fmap f (TFun pos typ typs) = TFun (f pos) (fmap f typ) (fmap (fmap f) typs)
---   fmap f (TInf pos) = TInf (f pos)
 
+-- Type instances
 instance Print Ast.Type where
-  prnt _ (TByte _) = "byte"
   prnt _ (TInt _) = "int"
   prnt _ (TBool _) = "bool"
   prnt _ (TVoid _) = "void"
@@ -511,10 +569,9 @@ instance Print Ast.Type where
   prnt _ (TClass _ id) = prnt 0 id
   prnt _ (TArray _ typ) = prnt 0 typ ++ "[]"
   prnt _ (TFun _ typ typs) = concat ["(", prnt 0 typ, " (", intercalate ", " (map (prnt 0) typs), "))"]
-  prnt _ (TInf _) = "var"
+  prnt _ (TVar _) = "var"
 
 instance Eq Ast.Type where
-  (==) (TByte _) (TByte _) = True
   (==) (TInt _) (TInt _) = True
   (==) (TBool _) (TBool _) = True
   (==) (TVoid _) (TVoid _) = True
@@ -522,11 +579,10 @@ instance Eq Ast.Type where
   (==) (TClass _ (Ast.Ident x)) (TClass _ (Ast.Ident y)) = x == y
   (==) (TArray _ typ1) (TArray _ typ2) = typ1 == typ2 
   (==) (TFun _ typ1 typs1) (TFun _ typ2 typs2) = typ1 == typ2 && and (zipWith (==) typs1 typs2)  
-  (==) (TInf _) (TInf _) = True
+  (==) (TVar _) (TVar _) = True
   (==) _ _ = False
 
 instance Show Ast.Type where
-  show (TByte _) = "byte"
   show (TInt _) = "int"
   show (TBool _) = "bool"
   show (TVoid _) = "void"
@@ -534,25 +590,25 @@ instance Show Ast.Type where
   show (TClass _ (Ast.Ident x)) = x
   show (TArray _ typ) = concat ["[", show typ, "]"]
   show (TFun _ typ typs) = concat [intercalate " -> " (map show typs), " => ", show typ]
-  show (TInf _) = "var"
+  show (TVar _) = "var"
 
+-- Type converter
 convertType :: Abs.Type -> Ast.Type
-convertType (Abs.Var bnfc) = TInf (toPos bnfc)
+convertType (Abs.Var bnfc) = TVar (toPos bnfc)
 convertType (Abs.Arr bnfc typ) = TArray (toPos bnfc) (convertType typ)
-convertType (Abs.Cls bnfc (Abs.Ident x)) = case x of
-  "byte" -> TByte pos
+convertType (Abs.Cls bnfc (Abs.Ident x)) = case x of -- Cls had and ident which was used by primitive types
   "int" -> TInt pos
   "boolean" -> TBool pos
   "void" -> TVoid pos
   "string" -> TStr pos
-  "var" -> TInf pos
+  "var" -> TVar pos
   _ -> TClass pos (Ast.Ident x)
   where
     pos = toPos bnfc
 convertType (Abs.Void bnfc) = TVoid (toPos bnfc)
 
+-- Type helper functions
 getTypePos :: Ast.Type -> Pos
-getTypePos (TByte pos) = pos
 getTypePos (TInt pos) = pos
 getTypePos (TBool pos) = pos
 getTypePos (TVoid pos) = pos
@@ -560,7 +616,7 @@ getTypePos (TStr pos) = pos
 getTypePos (TClass pos _) = pos
 getTypePos (TArray pos _) = pos
 getTypePos (TFun pos _ _) = pos
-getTypePos (TInf pos) = pos
+getTypePos (TVar pos) = pos
 
 isBoolType :: Ast.Type -> Bool
 isBoolType (TBool _) = True
@@ -570,12 +626,8 @@ isIntType :: Ast.Type -> Bool
 isIntType (TInt _) = True
 isIntType _ = False
 
-isByteType :: Ast.Type -> Bool
-isByteType (TByte _) = True
-isByteType _ = False
-
 isInfType :: Ast.Type -> Bool
-isInfType (TInf _) = True
+isInfType (TVar _) = True
 isInfType _ = False
 
 isArrType :: Ast.Type -> Bool
@@ -594,14 +646,14 @@ isPrimType :: Ast.Type -> Bool
 isPrimType (TStr _) = False
 isPrimType (TClass _ _) = False
 isPrimType (TArray _ _) = False
-isPrimType (TInf _) = False
+isPrimType (TVar _) = False
 isPrimType _ = True
 
 createClassIdent :: Ast.Type -> Ast.Ident
 createClassIdent (TStr _) = Ast.Ident "String"
 createClassIdent (TClass _ id) = id
 createClassIdent (TArray _ _) = Ast.Ident "Array"
-createClassIdent (TInf _) = Ast.Ident "Object"
+createClassIdent (TVar _) = Ast.Ident "Object"
 createClassIdent _ = Ast.Ident "Default"
 
 getArrInsideType :: Ast.Type -> Ast.Type
@@ -622,11 +674,14 @@ getClassTypeName _ = ""
 
 
 -- --< Items >-- --
+
+-- Item remains unchanged
 data Item = 
     Init Pos Ast.Ident Ast.Expr
   | NoInit Pos Ast.Ident
   deriving (Ord, Show, Read)
 
+-- Item instances
 instance Print Ast.Item where
   prnt _ (Ast.Init _ id e) = concat [prnt 0 id, " = ", prnt 0 e]
   prnt _ (Ast.NoInit _ id) = prnt 0 id
@@ -635,22 +690,28 @@ instance Eq Ast.Item where
   (==) (Ast.Init _ id1 e1) (Ast.Init _ id2 e2) = id1 == id2 && e1 == e2
   (==) (Ast.NoInit _ id1) (Ast.NoInit _ id2) = id1 == id2
 
+-- Item converter
 convertItem :: Abs.Item -> Ast.Item
 convertItem (Abs.Init bnfc id e) = Ast.Init (toPos bnfc) (convertIdent id) (convertExpr e)
 convertItem (Abs.NoInit bnfc id) = Ast.NoInit (toPos bnfc) (convertIdent id)
 
+-- Item helper functions
 getItemIdent :: Ast.Item -> Ast.Ident
 getItemIdent (Ast.Init _ id _) = id
 getItemIdent (Ast.NoInit _ id) = id
 
 
 -- --< Ident >-- --
-newtype Ident = Ident String -- TODO nie wiadomo co z posem
+
+-- Ident remains unchanged
+newtype Ident = Ident String
   deriving (Eq, Ord, Show, Read)
 
+-- Ident instances
 instance Print Ast.Ident where
   prnt _ (Ast.Ident s) = s
 
+-- Ident converter
 convertIdent :: Abs.Ident -> Ast.Ident
 convertIdent (Abs.Ident id) = Ast.Ident id
 
