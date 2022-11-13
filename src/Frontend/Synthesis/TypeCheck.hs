@@ -407,6 +407,7 @@ checkDefTypes (ClsDef pos id inh es) =
 --    make sure that the args are not of type void, then perform a check
 --    on a method block with the method visible inside the block
 -- AtrDef: Check if declared attribute is of correct type and is not void
+--    and is not named 'self'
 checkElementTypes :: ClsDef -> TypeCheckMonad ClsDef
 checkElementTypes (MetDef pos ret id args block) =
   do
@@ -417,10 +418,12 @@ checkElementTypes (MetDef pos ret id args block) =
     mapM_ throwIfVoid argTypes
     res <- local (putFunctionToVarMap ret args) (checkBlockTypes block)
     return (MetDef pos ret id args res)
-checkElementTypes (AtrDef pos typ id) =
+checkElementTypes (AtrDef pos typ id@(Ident s)) =
   do
     isCorrectType typ
     throwIfVoid typ
+    when (s == "self") $
+      lift $ throwError (UnexpectedSelf pos)
     return (AtrDef pos typ id)
 
 -- Check if there are no var redefinitions inside the block (two identical

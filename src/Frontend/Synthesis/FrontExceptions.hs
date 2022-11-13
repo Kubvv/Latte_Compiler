@@ -143,7 +143,7 @@ instance Show FrontException where
   show (UnexpectedVoid pos) =
     "Incorrect use of void type " ++ show pos
   show (UnexpectedSelf pos) = 
-    "Incorrect use of self keyword " ++ show pos
+    "Cannot declare a variable named 'self' inside a class " ++ show pos
   show (CyclicInheritanceException pos id) = concat [
     "Cyclic inheritance detected for class ", showIdent id, " ", show pos
     ]
