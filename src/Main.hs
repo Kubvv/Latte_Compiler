@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveDataTypeable #-} --TODO wtf?
 module Main where
 
 import System.IO (hPutStrLn, stderr, putStrLn, readFile, hPutStr)
@@ -9,7 +8,6 @@ import System.Directory (doesFileExist)
 
 import Data.Maybe
 import Data.Functor
--- import Data.Typeable
 
 import Control.Monad
 import Control.Monad.Except
@@ -69,14 +67,16 @@ syntaxCheck out file =
 runFrontCheck :: String -> Abs.Program -> IO ()
 runFrontCheck out prog = 
   do
-    case runExceptT $ checkTypes (convertProg prog) of
+    val <- runExceptT $ checkTypes (convertProg prog) 
+    case val of
       Right (t, cs) -> runOptimizer out t cs 
       Left err -> exitErrWithMessage (show err) True
 
 runOptimizer :: String -> A.Program -> [Class] -> IO ()
 runOptimizer out prog cs =
   do
-    case runExceptT $ optimize prog of
+    val <- runExceptT $ optimize prog
+    case val of
       Right t -> do
         hPutStrLn stderr "OK"
         exitSuccess
