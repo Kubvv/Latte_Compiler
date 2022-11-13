@@ -186,14 +186,14 @@ convertStmt (Abs.CondElse bnfc e s1 s2) = Ast.Cond (toPos bnfc) (convertExpr e) 
 convertStmt (Abs.While bnfc e s) = Ast.While (toPos bnfc) (convertExpr e) (convertStmt s)
 convertStmt (Abs.For bnfc typ id@(Abs.Ident x) e s) = BlockS pos (Block pos [ -- TODO better names for idents
   Ast.Decl pos [
-    (TInt pos, Ast.Init pos (createIdent ("a_" ++ x)) (Prim pos (Int pos 0))), (TVar pos, Ast.Init pos (createIdent ("b_" ++ x)) (convertExpr e))
+    (TInt pos, Ast.Init pos (createIdent ("ind_" ++ x)) (Prim pos (Int pos 0))), (TVar pos, Ast.Init pos (createIdent ("tab_" ++ x)) (convertExpr e))
     ],
   Ast.While pos (
-    Ram pos (Lt pos) (Ast.Var pos (createIdent ("a_" ++ x))) (Elem pos (Ast.Var pos (createIdent ("b_" ++ x))) (Ast.Ident "length") Nothing))
+    Ram pos (Lt pos) (Ast.Var pos (createIdent ("ind_" ++ x))) (Elem pos (Ast.Var pos (createIdent ("tab_" ++ x))) (Ast.Ident "length") Nothing))
     (BlockS pos (Block pos [
-      Ast.Decl pos [(convertType typ, Ast.Init pos (convertIdent id) (ArrAcs pos (Ast.Var pos (createIdent ("b_" ++ x))) (Ast.Var pos (createIdent ("a_" ++ x))) Nothing))],
+      Ast.Decl pos [(convertType typ, Ast.Init pos (convertIdent id) (ArrAcs pos (Ast.Var pos (createIdent ("tab_" ++ x))) (Ast.Var pos (createIdent ("ind_" ++ x))) Nothing))],
       convertStmt s,
-      Ast.Ass pos (Ast.Var pos (createIdent ("a_" ++ x))) (Ram pos (Add pos) (Ast.Var pos (createIdent ("a_" ++ x))) (Prim pos (Int pos 1)))]))
+      Ast.Ass pos (Ast.Var pos (createIdent ("ind_" ++ x))) (Ram pos (Add pos) (Ast.Var pos (createIdent ("ind_" ++ x))) (Prim pos (Int pos 1)))]))
   ])
   where
     pos = toPos bnfc
