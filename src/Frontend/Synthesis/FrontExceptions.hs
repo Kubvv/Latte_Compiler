@@ -21,7 +21,6 @@ data FrontException =
   | DuplicateInhAttributeException Pos Ident
   | DuplicateOppositeElementInParentException Pos Ident String
   | WrongOverridenMethodType Pos Ident
-  | ReferenceException Pos Ident
   | NoReturnException Pos
   | UnexpectedReturn Pos
   | ReturnVoidTypeException Pos
@@ -32,7 +31,7 @@ data FrontException =
   | NoTypeException Pos String
   | WrongMainDefinitionException Pos
   | DuplicateFunctionArgumentsException Pos Ident
-  | DefaultOverrideException Pos
+  | DefaultOverrideException Pos Ident
   | RedefinitionException Pos Pos Ident
   | UnexpectedVar Pos
   | UnexpectedVoid Pos
@@ -52,7 +51,7 @@ data FrontException =
   | NegateNonNumException Pos Type
   | NegateNonBoolException Pos Type
   | OperationTypesMismatchException Pos Type Type
-  | VarDeclarationAsCondStmtException Pos
+  | VarDeclarationAsBlockStmtException Pos
   | AlwaysNullException Pos
   | NegativeIndexException Pos
 
@@ -93,19 +92,14 @@ instance Show FrontException where
       "Duplicated class element name ", s, " ", show pos
     ]
   show (DuplicateInhAttributeException pos id) = concat [
-      "Duplicated attribute name ", showIdent id, " ", show pos, " in inherited class "
+      "Duplicated attribute name ", showIdent id, " ", show pos, " is already declared in a parent class "
     ]
   show (DuplicateOppositeElementInParentException pos id elemType) = concat [
-      "Name ", showIdent id, " is already declared as ", elemType, " ", show pos
+      "Name ", showIdent id, " ", show pos, " is already declared as ", elemType, " in a parent class"
     ]
   show (WrongOverridenMethodType pos id) = concat [
       "Method ", showIdent id, " ", show pos, 
       " has non matching types with the overriden method from parent"
-    ]
-  show (ReferenceException pos id) = concat [
-    "Expected variable ", show pos,
-    " as this argument is passed by reference to the function ",
-    showIdent id
     ]
   show (NoReturnException pos) =
     "No return found for block " ++ show pos
@@ -132,8 +126,9 @@ instance Show FrontException where
   show (DuplicateFunctionArgumentsException pos id) = concat [
     "Two arguments are labeled with the same name ", showIdent id, " ", show pos
     ]
-  show (DefaultOverrideException pos) =
-    "Default function overriden " ++ show pos
+  show (DefaultOverrideException pos id) = concat [
+    "Default function named ", showIdent id, " overriden ", show pos
+    ]
   show (RedefinitionException pos oldPos id) = concat [
     "Redefinition of identifier ", showIdent id, " ", show pos,
     " which was previously declared ", show oldPos
@@ -187,7 +182,7 @@ instance Show FrontException where
     "Operator ", show pos, " does not accept given types of arguments ",
     show typ1, " and ", show typ2 
     ]
-  show (VarDeclarationAsCondStmtException pos) = 
+  show (VarDeclarationAsBlockStmtException pos) = 
     "The statement of an if or while cannot be a var declartion statement " ++ show pos
   show (AlwaysNullException pos) = concat [
     "Expression ", show pos, " always evaluates to null"

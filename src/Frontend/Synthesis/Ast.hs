@@ -184,7 +184,7 @@ convertStmt (Abs.VRet bnfc) = RetV (toPos bnfc)
 convertStmt (Abs.Cond bnfc e s) = Ast.Cond (toPos bnfc) (convertExpr e) (convertStmt s) (Ast.Empty (toPos bnfc))
 convertStmt (Abs.CondElse bnfc e s1 s2) = Ast.Cond (toPos bnfc) (convertExpr e) (convertStmt s1) (convertStmt s2)
 convertStmt (Abs.While bnfc e s) = Ast.While (toPos bnfc) (convertExpr e) (convertStmt s)
-convertStmt (Abs.For bnfc typ id@(Abs.Ident x) e s) = BlockS pos (Block pos [ -- TODO better names for idents
+convertStmt (Abs.For bnfc typ id@(Abs.Ident x) e s) = BlockS pos (Block pos [
   Ast.Decl pos [
     (TInt pos, Ast.Init pos (createIdent ("ind_" ++ x)) (Prim pos (Int pos 0))), (TVar pos, Ast.Init pos (createIdent ("tab_" ++ x)) (convertExpr e))
     ],
@@ -323,9 +323,13 @@ convertString ('\\':'\"':cs) = '\"' : convertString cs
 convertString ('\\':'\'':cs) = '\'' : convertString cs 
 convertString ('\\':'n':cs) = '\n' : convertString cs 
 convertString ('\\':'t':cs) = '\t' : convertString cs
-convertString ('\\':cs) = let (n, css) = findn cs in chr n : convertString css
+convertString ('\\':c:cs) = 
+  if isDigit c then
+    let (n, css) = findDigit (c:cs) in chr n : convertString css
+  else
+    '\\' : convertString (c:cs) 
   where
-    findn cs = 
+    findDigit cs = 
       let numstr = digitTake cs []
           num = read numstr :: Int
           css = drop (length numstr) cs
@@ -671,6 +675,12 @@ getFunArgTypes _ = []
 getClassTypeName :: Ast.Type -> String
 getClassTypeName (TClass _ (Ast.Ident s)) = s
 getClassTypeName _ = ""
+
+isObjectType :: Ast.Type -> Bool
+isObjectType (TClass _ _) = True
+isObjectType (TStr _) = True
+isObjectType (TArray _ _) = True
+isObjectType _ = False
 
 
 -- --< Items >-- --

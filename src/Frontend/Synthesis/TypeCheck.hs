@@ -155,20 +155,19 @@ isUnique set ((s, pos):sps) =
   else
     isUnique (S.insert s set) sps
 
--- TODO this function may be wrong due to bad sorting
 -- Check if a given sorted list of (elements, depths) abide the rules of inheritance:
 -- There shouldn't be any attribute repetitions
 -- There cannot be a method named the same as an attribute in parent class and vice versa
 -- If methods are named the same, their types must be the same
-isCorrectInheritance :: [Class] -> [(Element, Int)] -> ExceptMonad ()
+isCorrectInheritance :: [Class] -> [Element] -> ExceptMonad ()
 isCorrectInheritance _ [] = return ()
-isCorrectInheritance _ ((Attribute pos id@(Ident x) _, _):(Attribute _ (Ident y) _, _):_) | x == y =
+isCorrectInheritance _ ((Attribute pos id@(Ident x) _):(Attribute _ (Ident y) _):_) | x == y =
   throwError (DuplicateInhAttributeException pos id)
-isCorrectInheritance _ ((Attribute pos id@(Ident x) _, _):(Method _ _ (Ident y) _, _):_) | x == y =
-  throwError (DuplicateOppositeElementInParentException pos id "Method")
-isCorrectInheritance _ ((Method pos _ id@(Ident x) _, _):(Attribute _ (Ident y) _, _):_) | x == y =
-  throwError (DuplicateOppositeElementInParentException pos id "Attribute")
-isCorrectInheritance cs ((Method pos ret1 id@(Ident x) types1, _):m@(Method _ ret2 (Ident y) types2, _):eis) | x == y =
+isCorrectInheritance _ ((Attribute pos id@(Ident x) _):(Method _ _ (Ident y) _):_) | x == y =
+  throwError (DuplicateOppositeElementInParentException pos id "a method")
+isCorrectInheritance _ ((Method pos _ id@(Ident x) _):(Attribute _ (Ident y) _):_) | x == y =
+  throwError (DuplicateOppositeElementInParentException pos id "an attribute")
+isCorrectInheritance cs ((Method pos ret1 id@(Ident x) types1):m@(Method _ ret2 (Ident y) types2):eis) | x == y =
   do
     isMatching <- matchingMethodTypes cs ret1 ret2 types1 types2
     if isMatching then
@@ -191,9 +190,9 @@ checkClassNames cs =
       throwError (DuplicateClassException (snd unqNames) (Ident (fst unqNames)))
     let maybeUnqElems = P.map (isUnique S.empty) elemsPos
     throwIfJust maybeUnqElems
-    let inhElems = P.map (getInheritedElems 0 cs) cs
-    let sortInhElems = P.map sort inhElems
-    mapM_ (isCorrectInheritance cs) sortInhElems
+    let inhDepthElems = P.map (sort . getInheritedElems 0 cs) cs
+    let inhElems = (P.map . P.map) snd inhDepthElems
+    mapM_ (isCorrectInheritance cs) inhElems
 
 -- Check if every declared + predefined function have a unique name, if not - throw an error
 checkFunctionNames :: [Function] -> ExceptMonad ()
@@ -203,7 +202,10 @@ checkFunctionNames fs =
     let maybeUnq = isUnique S.empty spos
     let unq = fromMaybe ("", BNFC Nothing) maybeUnq
     unless (fst unq == "") $
-      throwError (DuplicateFunctionException (snd unq) (Ident (fst unq)))
+      if isDefaultFunction $ fst unq then
+        throwError (DefaultOverrideException (snd unq) (Ident (fst unq)))
+      else
+        throwError (DuplicateFunctionException (snd unq) (Ident (fst unq)))
 
 -- Find a class represented by a string - if absent, throw an error
 findClassInList :: [Class] -> String -> ExceptMonad Class
@@ -318,7 +320,10 @@ throwIfNoCast pos typ1 typ2 cs =
 
 -- TODO comment
 throwIfBadExprCast :: Type -> Type -> [Class] -> Pos -> TypeCheckMonad ()
-throwIfBadExprCast (TClass pos (Ident "Object")) (TArray pos2 typ) _ _ = return () -- TODO do wywalenia?
+throwIfBadExprCast typ1@(TVar _) typ2 _ pos3 = 
+  do
+    unless (isObjectType typ2) $
+      throwError (BadTypeException pos3 typ1 typ2)
 throwIfBadExprCast c1@(TClass pos (Ident s1)) c2@(TClass pos2 (Ident s2)) cs pos3 =
   do
     b1 <- lift $ isClassParent cs s1 s2
@@ -548,9 +553,9 @@ checkStmtTypes st@(RetV pos) =
 checkStmtTypes (Cond pos e s1 s2) = 
   do
     when (isDeclStmt s1) $
-      lift $ throwError (VarDeclarationAsCondStmtException (getStmtPos s1))
+      lift $ throwError (VarDeclarationAsBlockStmtException (getStmtPos s1))
     when (isDeclStmt s2) $
-      lift $ throwError (VarDeclarationAsCondStmtException (getStmtPos s2))
+      lift $ throwError (VarDeclarationAsBlockStmtException (getStmtPos s2))
     (res, resType) <- checkExprTypes e
     unless (isBoolType resType) $
       lift $ throwError (NotBoolInConditionException pos resType)
@@ -563,7 +568,7 @@ checkStmtTypes (While pos e s) =
     unless (isBoolType resType) $
       lift $ throwError (NotBoolInConditionException pos resType)
     when (isDeclStmt s) $
-      lift $ throwError (VarDeclarationAsCondStmtException (getStmtPos s))
+      lift $ throwError (VarDeclarationAsBlockStmtException (getStmtPos s))
     (ress, f) <- checkStmtTypes s
     return (While pos res ress, id)
 checkStmtTypes (ExprS pos e) =

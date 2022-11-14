@@ -38,9 +38,9 @@ getInhClass (Just (Ident x)) (c@(Class _ (Ident y) _ _):_) | x == y = Just c
 getInhClass mi@(Just (Ident x)) (c:cs) = getInhClass mi cs
 
 -- Get all elements and their depths from all ancestors of a given class
-getInheritedElems :: Int -> [Class] -> Class -> [(Element, Int)]
+getInheritedElems :: Int -> [Class] -> Class -> [((String, Int), Element)]
 getInheritedElems depth cs (Class _ _ inh es) =
-  let res = P.map (,depth) es
+  let res = P.map (\e -> ((getElementName e, depth), e)) es
   in case getInhClass inh cs of
     Just inhClass -> res ++ getInheritedElems (depth + 1) cs inhClass
     Nothing -> res
@@ -142,6 +142,10 @@ defaultFunctions = [
   Function Default (TStr Default) (Ident "intToString") [TInt Default],
   Function Default (TStr Default) (Ident "boolToString") [TBool Default]
   ]
+
+-- Check whether a function represented by a string is a default function
+isDefaultFunction :: String -> Bool
+isDefaultFunction s = any (\(Function _ _ (Ident x) _) -> x == s) defaultFunctions
 
 appendDefaultClasses :: [Class] -> [Class]
 appendDefaultClasses = (++) defaultClasses
