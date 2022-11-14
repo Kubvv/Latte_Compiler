@@ -1,4 +1,6 @@
-Remove-Item -Path .\tests_raport.txt
+if (Test-Path -Path C:\temp\important_file.txt -PathType Leaf) {
+  Remove-Item -Path .\tests_raport.txt
+}
 Get-ChildItem -Path .\ -Filter *.lat -Recurse -File -Name | ForEach-Object {
   Add-Content .\tests_raport.txt "<=======================>"
   Add-Content .\tests_raport.txt ($_)
