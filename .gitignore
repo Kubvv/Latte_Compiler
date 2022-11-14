@@ -26,3 +26,4 @@ cabal.project.local~
 .HTF/
 .ghc.environment.*
 test.lat
+tests_report.txt
