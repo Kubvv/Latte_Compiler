@@ -630,9 +630,9 @@ isIntType :: Ast.Type -> Bool
 isIntType (TInt _) = True
 isIntType _ = False
 
-isInfType :: Ast.Type -> Bool
-isInfType (TVar _) = True
-isInfType _ = False
+isVarType :: Ast.Type -> Bool
+isVarType (TVar _) = True
+isVarType _ = False
 
 isArrType :: Ast.Type -> Bool
 isArrType (TArray _ _) = True

@@ -293,8 +293,8 @@ cutRelConst (Ram pos op (Prim pos2 pr) e) =
   return (Ram pos (swapRelOperator op) e (Prim pos2 pr))
 cutRelConst e = return e
 
--- Cut consts of arithmetic expression by linearizing the expression, sort if
--- the operator is add or mul and fold the constants 
+-- Cut consts of arithmetic expression by linearizing the expression, sort if the 
+-- operator is add or mul (to move sub operations to the front) and fold the constants 
 cutArthConst :: Expr -> ConstMonad Expr
 cutArthConst e@(Ram pos op e1 e2) = 
   do

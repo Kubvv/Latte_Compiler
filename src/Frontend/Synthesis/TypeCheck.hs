@@ -38,7 +38,7 @@ getArgType (Arg pos typ id) =
 -- Among the legal casts we have:
 -- Casts among the same primitive types
 -- Casts from String, Class and Array to Var
--- Casts from Var to anything
+-- Casts from Var to a class (null is a var)
 -- Casts that swap String type and String class with each other
 -- Casts from string and array to an object class
 -- Casts among the arrays, if they have the same type of data inside
@@ -50,7 +50,7 @@ castTable _ (TInt _) (TInt _) = return True
 castTable _ (TBool _) (TBool _) = return True
 castTable _ (TVoid _) (TVoid _) = return True
 castTable _ (TStr _) (TStr _) = return True
-castTable _ (TVar _) _ = return True
+castTable _ (TVar _) type2 = return (isObjectType type2)
 castTable _ (TStr _) (TClass _ (Ident "String")) = return True
 castTable _ (TClass _ (Ident "String")) (TStr _) = return True
 castTable _ (TStr _) (TClass _ (Ident "Object")) = return True
@@ -318,12 +318,9 @@ throwIfNoCast pos typ1 typ2 cs =
     unless res $
       lift $ throwError (BadTypeException pos typ1 typ2)
 
--- TODO comment
+-- Special case of throwIfNoCast, where we allow the casting both to the child and
+-- to the parent, if types are not classes, check them with regular cast table
 throwIfBadExprCast :: Type -> Type -> [Class] -> Pos -> TypeCheckMonad ()
-throwIfBadExprCast typ1@(TVar _) typ2 _ pos3 = 
-  do
-    unless (isObjectType typ2) $
-      throwError (BadTypeException pos3 typ1 typ2)
 throwIfBadExprCast c1@(TClass pos (Ident s1)) c2@(TClass pos2 (Ident s2)) cs pos3 =
   do
     b1 <- lift $ isClassParent cs s1 s2
@@ -332,9 +329,7 @@ throwIfBadExprCast c1@(TClass pos (Ident s1)) c2@(TClass pos2 (Ident s2)) cs pos
       throwError (BadTypeException pos3 c1 c2)
 throwIfBadExprCast typ1 typ2 cs pos =
   do
-    res <- lift $ castTable cs typ2 typ1 --TODO I don't know if it makes sense to swap
-    unless res $
-      lift $ throwError (BadTypeException pos typ1 typ2)
+    throwIfNoCast pos typ1 typ2 cs
 
 -- Check if two given types are the same by trying to cast one to another and vice versa
 isEqType :: Type -> Type -> [Class] -> TypeCheckMonad Bool
@@ -477,9 +472,9 @@ checkInitTypes ((typ, Init pos id e):is) =
     isCorrectType typ
     throwIfVoid typ
     (res, resType) <- checkExprTypes e
-    when (isInfType resType && isInfType typ) $
+    when (isVarType resType && isVarType typ) $
       lift $ throwError (NullInferException pos)
-    if isInfType typ then do
+    if isVarType typ then do
       (resItems, f) <- local (putv id resType) (checkInitTypes is)
       return ((resType, Init pos id res):resItems, putv id resType . f)
     else do
@@ -622,7 +617,7 @@ checkExprTypes (Cast pos typ e) =
     env <- ask
     isCorrectType typ
     throwIfVoid typ
-    when (isInfType typ) $
+    when (isVarType typ) $
       lift $ throwError (CastToVarException pos)
     (res, resType) <- checkExprTypes e
     throwIfBadExprCast resType typ (css env) pos
@@ -674,7 +669,8 @@ checkExprTypes (New pos typ me) =
     case me of
       Just e -> do
         (res, resType) <- checkExprTypes e
-        throwIfNoCast pos resType (TInt Default) (css env)
+        unless (isIntType resType) $
+          lift $ throwError (BadTypeException pos resType (TInt Default))
         return (New pos typ (Just res), TArray pos typ)
       Nothing -> do
         case typ of

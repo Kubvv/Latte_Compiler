@@ -62,9 +62,10 @@ instance Show FrontException where
     ]
   show (BadTypeException pos act exp) = concat [
     "Type mismatch ", show pos,
-    ", found type ", show act,
+    ", found type ", actNull,
     " cannot be casted to expected type ", show exp
     ]
+    where actNull = if isVarType act then "null" else show act
   show (NotAFunctionException pos act) = concat [
     "Expected a function ", show pos,
     ", but got type ", show act
