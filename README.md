@@ -2,14 +2,13 @@
 A Haskell written Complier for Latte language, done for compiler construction course. It will most likely compile to x86.
 ## Running the compiler
 
-You can run the compile and run the compiler using following commands:
+You can compile and run the compiler using following commands:
 ```
 make
 ./latc file_name.lat
 ```
-More information can be found by typing
+More information can be found by typing:
 ```
-make
 ./latc -h
 ```
 
