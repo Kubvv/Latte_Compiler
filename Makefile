@@ -11,14 +11,19 @@ parserSources = src/Frontend/Parser/AbsLatte.hs \
 
 all: compiler
 
+parser:
+	/home/students/inf/PUBLIC/MRJP/bin/bnfc src/Frontend/Lang/Instant.cf -o src/Frontend/Parser
+	happy -gcai src/Frontend/Parser/ParInstant.y
+	alex -g src/Frontend/Parser/LexInstant.x
+
 compiler: .\src\Main.hs ${synthesisSources} ${parserSources}
 	ghc --make -isrc/Frontend/Parser:src/Frontend/Synthesis .\src\Main.hs -o latc
 
 clean:
 	rm -f *.hi
 	rm -f Frontend/Parser/*.hi
-	rm -f Frontend/Typecheck/*.hi
+	rm -f Frontend/Synthesis/*.hi
 	rm -f *.o
 	rm -f Frontend/Parser/*.o
-	rm -f Frontend/Typecheck/*.o
+	rm -f Frontend/Synthesis/*.o
 	rm -f latc
