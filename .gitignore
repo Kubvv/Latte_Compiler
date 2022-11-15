@@ -27,3 +27,4 @@ cabal.project.local~
 .ghc.environment.*
 test.lat
 tests_raport.txt
+tests_before_optim.txt
