@@ -110,23 +110,17 @@ defaultClasses :: [Class]
 defaultClasses = [
   Class Default (Ident "String") (Just (Ident "Object")) [
       Method Default (TBool Default) (Ident "equals") [TClass Default (Ident "Object")],
-      Method Default (TInt Default) (Ident "hashCode") [],
-      Method Default (TStr Default) (Ident "toString") [],
       Method Default (TClass Default (Ident "String")) (Ident "concat") [TClass Default (Ident "String")],
-      Method Default (TInt Default) (Ident "charAt") [TInt Default],
-      Method Default (TClass Default (Ident "String")) (Ident "substr") [TInt Default, TInt Default],
-      Method Default (TInt Default) (Ident "indexOf") [TClass Default (Ident "String"), TInt Default],
       Method Default (TInt Default) (Ident "length") []
     ],
   Class Default (Ident "Object") Nothing [
       Method Default (TBool Default) (Ident "equals") [TClass Default (Ident "Object")],
-      Method Default (TInt Default) (Ident "hashCode") [],
       Method Default (TStr Default) (Ident "toString") []
     ],
   Class Default (Ident "Array") (Just (Ident "Object")) [
       Attribute Default (Ident "length") (TInt Default),
-      Attribute Default (Ident "elem") (TClass Default (Ident "Object")),
-      Attribute Default (Ident "elemSize") (TInt Default),
+      Attribute Default (Ident "items") (TClass Default (Ident "Object")),
+      Attribute Default (Ident "sizeOfItem") (TInt Default),
       Method Default (TStr Default) (Ident "toString") []
     ]
   ]
@@ -139,7 +133,7 @@ defaultFunctions = [
   Function Default (TInt Default) (Ident "readInt") [],
   Function Default (TStr Default) (Ident "readString") [],
   Function Default (TVoid Default) (Ident "error") [],
-  Function Default (TStr Default) (Ident "intToString") [TInt Default],
+  Function Default (TStr Default) (Ident "intToString") [TInt Default], --TODO może do wywalenia
   Function Default (TStr Default) (Ident "boolToString") [TBool Default]
   ]
 
