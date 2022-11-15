@@ -7,7 +7,7 @@ class A {
 }
 
 int b(A cls) {
-  return cls.getA();
+  return 0;
 }
 
 int main() {
