@@ -78,7 +78,7 @@ instance Show FrontException where
     "Expected an array type, got ", show typ, " ", show pos
     ]
   show (ArrayIndexNotNumericalException pos typ) = concat [
-    "Expected an int or a byte type as array index, got", show typ, " ", show pos
+    "Expected an int or a byte type as array index, got ", show typ, " ", show pos
     ]
   show (PrimitiveTypeElementAccessException pos typ) = concat [ 
     "Cannot access an element of a primitive type ", show typ, " ", show pos
