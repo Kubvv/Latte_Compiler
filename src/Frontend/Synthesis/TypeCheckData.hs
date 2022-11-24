@@ -120,8 +120,7 @@ defaultClasses = [
   Class Default (Ident "Array") (Just (Ident "Object")) [
       Attribute Default (Ident "length") (TInt Default),
       Attribute Default (Ident "items") (TClass Default (Ident "Object")),
-      Attribute Default (Ident "sizeOfItem") (TInt Default),
-      Method Default (TStr Default) (Ident "toString") []
+      Attribute Default (Ident "sizeOfItem") (TInt Default)
     ]
   ]
 
