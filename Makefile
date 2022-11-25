@@ -9,12 +9,15 @@ parserSources = src/Frontend/Parser/AbsLatte.hs \
 	src/Frontend/Parser/LexLatte.hs \
 	src/Frontend/Parser/ParLatte.hs 
 
-all: compiler
+all: native_runtime compiler
 
 parser:
 	/home/students/inf/PUBLIC/MRJP/bin/bnfc src/Frontend/Lang/Instant.cf -o src/Frontend/Parser
 	happy -gcai src/Frontend/Parser/ParInstant.y
 	alex -g src/Frontend/Parser/LexInstant.x
+
+native_runtime: src/lib/runtime.h src/lib/runtime.c
+	gcc -O2 -c src/lib/runtime.c -o src/lib/runtime.o 
 
 compiler: .\src\Main.hs ${synthesisSources} ${parserSources}
 	ghc --make -isrc/Frontend/Parser:src/Frontend/Synthesis .\src\Main.hs -o latc
