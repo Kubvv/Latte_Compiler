@@ -1,15 +1,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 // #include <unistdio.h>
-// #include <unistr.h>
+// #include <unistr.h> //TODO wywal?
 #include "runtime.h"
+#include <string.h>
+
 
 extern Type _class_Str;
 extern Type _class_Obj;
 extern Type _class_Arr;
 
 extern void bzero(void *s, size_t n);
-extern void *memcpy(void *des, const void *src, size_t n);
+extern void *memcpy(void *dest, const void *src, size_t n);
 
 typedef obj (*toStrPtr)(obj);
 char *err;
