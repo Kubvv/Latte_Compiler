@@ -1,7 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-// #include <unistdio.h>
-// #include <unistr.h> //TODO wywal?
 #include "runtime.h"
 #include <string.h>
 
@@ -126,7 +124,6 @@ obj _new_string(char *c) {
   o->data = str;
   str->len = strlen(c);
   int len = str->len;
-  //TODO maybe some u8_check?
 
   if (len <= 0) {
     str->data = 0;
@@ -196,20 +193,6 @@ int8_t _error() {
   fprintf(stderr, "%s\n", err);
   exit(1);
   return 1;
-}
-
-obj _intToString(int32_t i) { //TODO może do wywalenia
-  char tmp[UPPER_INT_SIZE];
-  sprintf(tmp, "%d", i);
-  return _new_string(tmp);
-}
-
-obj _boolToString(uint8_t b) {
-  if (b) {
-    return _new_string("true");
-  } else {
-    return _new_string("false");
-  }
 }
 
 int8_t _equals_str(obj o1, obj o2) {

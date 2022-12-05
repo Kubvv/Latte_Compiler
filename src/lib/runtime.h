@@ -3,8 +3,6 @@
 
 #include <inttypes.h>
 
-#define UPPER_INT_SIZE 12 //TODO check
-
 typedef struct Str {
   uint8_t *data;
   int32_t len;
@@ -47,8 +45,6 @@ int8_t _printString(obj str);
 int32_t _readInt();
 obj _readString();
 int8_t _error();
-obj _intToString(int32_t i);
-obj _boolToString(uint8_t b); //TODO do wywalenia?
 
 int8_t _equals_str(obj o1, obj o2);
 obj _concat_str(obj o1, obj o2);
