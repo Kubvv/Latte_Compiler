@@ -26,6 +26,8 @@ import Ssa
 import SsaData as S
 import Revamper
 
+import LivenessCheck
+
 unpackArgs :: [String] -> (Bool, Maybe String, Maybe String, Bool) -> (Bool, Maybe String, Maybe String, Bool)
 unpackArgs ("-h":args) (False, o, files, err) = unpackArgs args (True, o, files, err)
 unpackArgs ("-h":args) (True, o, files, err) = unpackArgs args (True, o, files, True)
@@ -91,7 +93,7 @@ runInterTranslate out prog cs =
     inter <- interTranslate prog cs
     -- putStrLn $ show inter
     revampedInter <- revamp inter
-    putStrLn $ show revampedInter
+    -- putStrLn $ show revampedInter
     runAssemblyBuild out revampedInter
 
 runAssemblyBuild :: String -> S.Program -> IO ()
