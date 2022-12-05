@@ -343,6 +343,10 @@ convertString ('\\':c:cs) =
     digitTake _ acc = reverse acc 
 convertString (c:cs) = c : convertString cs
 
+isPrimExpr :: Ast.Expr -> Bool
+isPrimExpr (Prim {}) = True
+isPrimExpr _ = False
+
 
 -- --< PrimitiveTypes >-- --
 

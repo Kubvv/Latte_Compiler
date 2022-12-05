@@ -23,10 +23,9 @@ type Inits = [(Type, Item)]
 optimize :: Program -> ExceptMonad Program
 optimize p =
   do
-    constProg <- runReaderT (evalStateT (cutProgConst p) 0) (CEnv M.empty False S.empty)
+    constProg <- runReaderT (evalStateT (cutProgConst p) 0) emptyCenv
     returnProg <- crawlProgReturn constProg
     condProg <- addCondProg returnProg
-    liftIO $ putStrLn $ prnt 0 condProg
     renameProgVar condProg
 
 -- Cutting expressions --
@@ -58,7 +57,12 @@ getWhileAss (While _ _ s) = getWhileAss s
 getWhileAss (Cond _ _ s1 s2) = getWhileAss s1 ++ getWhileAss s2
 getWhileAss (Ass _ (Var _ id) _) = [id]
 getWhileAss (BlockS _ (Block _ stmts)) = getBlockAss stmts
-getWhileAss _ = []  
+getWhileAss _ = []
+
+countInits :: [Stmt] -> Int
+countInits [] = 0
+countInits ((Decl _ inits):stmts) = length inits + countInits stmts
+countInits (_:stmts) = countInits stmts
 
 -- Cutting the const expressions by evaluating them --
 {- This set of instructions traverses the ast tree and
@@ -76,7 +80,7 @@ cutDefConst :: Def -> ConstMonad Def
 cutDefConst (FnDef pos typ id args block) = 
   do
     res <- local (putFunctionArgsToVarMap args) (cutBlockConst block)
-    return (FnDef pos typ id args res)
+    return (FnDef pos typ id args (fst res))
 cutDefConst (ClsDef pos id inh es) =
   do
     res <- mapM cutElemConst es
@@ -88,24 +92,25 @@ cutElemConst :: ClsDef -> ConstMonad ClsDef
 cutElemConst (MetDef pos typ id args block) =
   do
     res <- local (putFunctionArgsToVarMap args) (cutBlockConst block)
-    return (MetDef pos typ id args res)
+    return (MetDef pos typ id args (fst res))
 cutElemConst atr@AtrDef {} = return atr
 
 {- Used for changing the environment after each statement, 
- - as some declarations might happen in between -}
-cutStmtController :: [Stmt] -> ConstMonad [Stmt]
-cutStmtController [] = return []
+ - as some declarations / var assignments might happen in between -}
+cutStmtController :: [Stmt] -> ConstMonad ([Stmt], ConstEnv -> ConstEnv)
+cutStmtController [] = return ([], id)
 cutStmtController (st:sts) =
   do
     (res, change) <- cutStmtConst st
-    reses <- local change (cutStmtController sts)
-    return (res:reses)
+    (reses, changes) <- local change (cutStmtController sts)
+    return ((res:reses), changes . change)
 
-cutBlockConst :: Block -> ConstMonad Block
+cutBlockConst :: Block -> ConstMonad (Block, ConstEnv -> ConstEnv)
 cutBlockConst (Block pos stmts) =
   do
-    res <- cutStmtController stmts
-    return (Block pos res)
+    let initCount = countInits stmts
+    (res, change) <- cutStmtController stmts
+    return ((Block pos res), removeLast initCount . change)
 
 -- Process one declaration at a time, perform tail recursion
 -- Init: save initialized variable to env as const iff expresion is Prim
@@ -139,8 +144,8 @@ cutStmtConst :: Stmt -> ConstMonad (Stmt, ConstEnv -> ConstEnv)
 cutStmtConst (Empty pos) = return (Empty pos, id)
 cutStmtConst (BlockS pos block) =
   do
-    res <- cutBlockConst block
-    return (BlockS pos res, id)
+    (res, f) <- cutBlockConst block
+    return (BlockS pos res, f)
 cutStmtConst (Decl pos inits) = 
   do
     (res, f) <- cutInitConst inits
@@ -150,10 +155,10 @@ cutStmtConst (Ass pos e1 e2) = do
   case e1 of
     (Var _ id) -> do
       res2 <- cutExprConst e2
-      let f = if (isInside env && S.member id (insideVar env)) || not (isInside env) then
-                modvexpr id res2
+      let f = if (isInside env && S.member id (insideVar env)) || not (isInside env) then 
+                modvexpr id res2 
               else
-                modv id Dyn          
+                modv id Dyn        
       return (Ass pos e1 res2, f)
     _ -> do
       res1 <- cutExprConst e1

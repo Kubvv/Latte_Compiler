@@ -3,6 +3,7 @@ module OptimizerData where
 import Data.Map as M
 import Prelude as P
 import Data.Set as S
+import Data.List as L
 
 import Control.Monad.Except
 import Control.Monad.State
@@ -38,54 +39,65 @@ getCutTypeFromExpr (Prim _ pr) = Const pr
 getCutTypeFromExpr _ = Dyn
 
 data ConstEnv = CEnv {
-  varMap :: M.Map Ident CutType, -- Holds mapping that tells whether a given id is a dynamic or constant one
+  varMap :: [(Ident, CutType)], -- Holds mapping that tells whether a given id is a dynamic or constant one
   isInside :: Bool, -- Indicates the fact that we are currently located inside if branch
   insideVar :: S.Set Ident -- Holds variables that were declared inside an if block
 }
 
+emptyCenv :: ConstEnv
+emptyCenv = CEnv [] False S.empty
+
 -- Put all arguments of a function to the map, setting their CutTypes to dynamic
 putFunctionArgsToVarMap :: [Arg] -> ConstEnv -> ConstEnv
 putFunctionArgsToVarMap args (CEnv varMap b set) = 
-  let newMap = P.foldl (\vmap (Arg _ _ id) -> M.insert id Dyn vmap) varMap args in 
+  let newMap = P.foldl (\vmap (Arg _ _ id) -> (id, Dyn) : vmap) varMap args in 
     CEnv newMap b set
 
 -- Get CutType from environment using id
 getv :: Ident -> ConstEnv -> Maybe CutType
-getv id env = M.lookup id (varMap env)
+getv id env = L.lookup id (varMap env)
 
 -- Put a new entry based on ident and type to map, if the putv function is
 -- called when we're in the if/else block, also add the ident to the set of occured idents
 putv :: Ident -> Type -> ConstEnv -> ConstEnv
 putv id typ (CEnv varMap b set) = 
   if b then
-    CEnv (M.insert id (getCutTypeFromType typ) varMap) b (S.insert id set) 
+    CEnv ((id, (getCutTypeFromType typ)) : varMap) b (S.insert id set) 
   else
-    CEnv (M.insert id (getCutTypeFromType typ) varMap) b set
+    CEnv ((id, (getCutTypeFromType typ)) : varMap) b set
 
 -- Put a new entry based on ident and expr to map, if the putv function is
 -- called when we're in the if/else/while block, also add the ident to the set of occured idents
 putvexpr :: Ident -> Expr -> ConstEnv -> ConstEnv
 putvexpr id e (CEnv varMap b set) = 
   if b then
-    CEnv (M.insert id (getCutTypeFromExpr e) varMap) b (S.insert id set) 
+    CEnv ((id, (getCutTypeFromExpr e)) : varMap) b (S.insert id set) 
   else 
-    CEnv (M.insert id (getCutTypeFromExpr e) varMap) b set
+    CEnv ((id, (getCutTypeFromExpr e)) : varMap) b set
 
--- Modify the CutType at given ident
+removeLast :: Int -> ConstEnv -> ConstEnv
+removeLast cnt (CEnv varMap b set) = 
+  CEnv newMap b set
+    where newMap = L.drop cnt varMap
+
+-- Searches for a given ident in the list and swaps the cut type
+modvsearch :: Ident -> CutType -> [(Ident, CutType)] -> [(Ident, CutType)]
+modvsearch id v [] = []
+modvsearch id v ((id2, _):ps) | id == id2 =
+  (id, v) : ps
+modvsearch id v (p:ps) = p : modvsearch id v ps
+
+-- Modify the first CutType at given ident
 modv :: Ident -> CutType -> ConstEnv -> ConstEnv
 modv id v (CEnv varMap b set) =
-  if M.member id varMap then
-    CEnv (M.insert id v varMap) b set
-  else
-    CEnv varMap b set
+  CEnv newMap b set
+    where newMap = modvsearch id v varMap
 
 -- Modify the CutType at given ident based on a given expr
 modvexpr :: Ident -> Expr -> ConstEnv -> ConstEnv
 modvexpr id e (CEnv varMap b set) =
-  if M.member id varMap then
-    CEnv (M.insert id (getCutTypeFromExpr e) varMap) b set
-  else
-    CEnv varMap b set  
+  CEnv newMap b set
+    where newMap = modvsearch id (getCutTypeFromExpr e) varMap
 
 -- Set the if inside flag to true
 setInside :: ConstEnv -> ConstEnv
