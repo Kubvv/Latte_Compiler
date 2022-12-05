@@ -19,8 +19,12 @@ import AbsLatte as Abs
 import Ast as A
 import FrontExceptions
 import TypeCheck
-import TypeCheckData
+import TypeCheckData as T
 import Optimizer
+
+import Ssa
+import SsaData as S
+import Revamper
 
 unpackArgs :: [String] -> (Bool, Maybe String, Maybe String, Bool) -> (Bool, Maybe String, Maybe String, Bool)
 unpackArgs ("-h":args) (False, o, files, err) = unpackArgs args (True, o, files, err)
@@ -72,15 +76,29 @@ runFrontCheck out prog =
       Right (t, cs) -> runOptimizer out t cs 
       Left err -> exitErrWithMessage (show err) True
 
-runOptimizer :: String -> A.Program -> [Class] -> IO ()
+runOptimizer :: String -> A.Program -> [T.Class] -> IO ()
 runOptimizer out prog cs =
   do
     val <- runExceptT $ optimize prog
     case val of
-      Right t -> do
-        hPutStrLn stderr "OK"
-        exitSuccess
+      Right t -> runInterTranslate out t cs
       Left err -> exitErrWithMessage (show err) True
+
+runInterTranslate :: String -> A.Program -> [T.Class] -> IO ()
+runInterTranslate out prog cs =
+  do
+    -- putStrLn $ prnt 0 prog
+    inter <- interTranslate prog cs
+    -- putStrLn $ show inter
+    revampedInter <- revamp inter
+    putStrLn $ show revampedInter
+    runAssemblyBuild out revampedInter
+
+runAssemblyBuild :: String -> S.Program -> IO ()
+runAssemblyBuild out prog =
+  do
+    hPutStrLn stderr "OK"
+    exitSuccess
 
 main :: IO ()
 main = 

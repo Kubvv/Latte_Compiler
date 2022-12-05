@@ -20,7 +20,9 @@ cabal.sandbox.config
 .bak
 *.info
 tester.sh
+newtester.sh
 latc.exe
+latc
 cabal.project.local
 cabal.project.local~
 .HTF/
