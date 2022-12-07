@@ -165,6 +165,14 @@ instance Show Stmt where
   show (JmpCond op s v1 v2) = "   jump " ++ s ++ " if " ++ show v1 ++ " " ++ show op ++ " " ++ show v2
   show (PutLab s) = "  " ++ s ++ ":"
 
+getDeclString :: Stmt -> Maybe String
+getDeclString (Decl _ s _) = Just s
+getDeclString _ = Nothing
+
+getDeclTyp :: Stmt -> Maybe Type
+getDeclTyp (Decl typ _ _) = Just typ
+getDeclTyp _ = Nothing
+
 getDeclAppVars :: Stmt -> [String]
 getDeclAppVars (Decl _ s e@(FunApp {})) = [s] ++ getExprVars e
 getDeclAppVars (Decl _ s e@(MetApp {})) = [s] ++ getExprVars e
@@ -178,6 +186,12 @@ getStmtVars RetV = []
 getStmtVars (Jmp {}) = []
 getStmtVars (JmpCond _ _ v1 v2) = catMaybes (getValVar v1 : [getValVar v2])
 getStmtVars (PutLab {}) = []
+
+-- Used later on in creating a set
+getAssignmentStr :: Stmt -> [String]
+getAssignmentStr (Decl _ s _) = [s]
+getAssignmentStr (Ass _ (LVar s) _) = [s]
+getAssignmentStr _ = []
 
 
 data Expr =
@@ -246,6 +260,11 @@ instance Show Type where
 isByteType :: Type -> Bool
 isByteType TByte = True
 isByteType _ = False
+
+getTypeSize :: Type -> Integer
+getTypeSize TByte = 0x01
+getTypeSize TInt = 0x04
+getTypeSize TRef = 0x08
 
 
 data RelOp =
