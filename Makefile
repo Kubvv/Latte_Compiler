@@ -14,7 +14,11 @@ interludeSources = ./src/Interlude/Ssa.hs \
 	./src/Interlude/RevamperData.hs
 backendSources = ./src/Backend/LivenessCheck.hs \
 	./src/Backend/LivenessCheckData.hs \
-	./src/Backend/Assembler.hs
+	./src/Backend/Assembler.hs \
+	./src/Backend/RegisterAlloc.hs \
+	./src/Backend/RegisterAllocData.hs \
+	./src/Backend/Generator.hs \
+	./src/Backend/Extractor.hs
 
 all: native_runtime compiler
 

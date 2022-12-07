@@ -27,6 +27,10 @@ import SsaData as S
 import Revamper
 
 import LivenessCheck
+import Assembler
+import RegisterAlloc
+import Generator
+import Extractor
 
 unpackArgs :: [String] -> (Bool, Maybe String, Maybe String, Bool) -> (Bool, Maybe String, Maybe String, Bool)
 unpackArgs ("-h":args) (False, o, files, err) = unpackArgs args (True, o, files, err)
