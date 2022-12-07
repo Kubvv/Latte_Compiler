@@ -2,44 +2,44 @@ module Assembler where
 
 import SsaData as S
 
-data Program = Prog [Stmt]
+data Program = Prog [AStmt]
   deriving (Eq, Show)
 
-data Stmt =
+data AStmt =
     Global String
   | Section String
   | SetLabel String
-  | MOV Val Val
-  | ADD Val Val
-  | SUB Val Val
-  | IMUL Val Val
-  | IDIV Val
+  | MOV AVal AVal
+  | ADD AVal AVal
+  | SUB AVal AVal
+  | IMUL AVal AVal
+  | IDIV AVal
   | CDQ 
-  | CMP Val Val
-  | TEST Val Val
-  | AND Val Val
-  | OR Val Val
-  | XOR Val Val
-  | INC Val
-  | SETZ Val
-  | JMP Val
-  | JZ Val
-  | JNZ Val
-  | JE Val
-  | JNE Val
-  | JL Val
-  | JLE Val
-  | JG Val
-  | JGE Val
-  | CALL Val
+  | CMP AVal AVal
+  | TEST AVal AVal
+  | AND AVal AVal
+  | OR AVal AVal
+  | XOR AVal AVal
+  | INC AVal
+  | SETZ AVal
+  | JMP AVal
+  | JZ AVal
+  | JNZ AVal
+  | JE AVal
+  | JNE AVal
+  | JL AVal
+  | JLE AVal
+  | JG AVal
+  | JGE AVal
+  | CALL AVal
   | LEAVE
   | RET
-  | PUSH Val
-  | POP Val
-  | DB Val
-  | DW Val
-  | DD Val
-  | DQ Val
+  | PUSH AVal
+  | POP AVal
+  | DB AVal
+  | DW AVal
+  | DD AVal
+  | DQ AVal
   deriving (Eq, Show)
 
 data Register = 
@@ -88,6 +88,9 @@ data Register =
   | RBP
   | RSP
   deriving (Eq, Ord, Show)
+
+modifiableRegisters :: [Register]
+modifiableRegisters = [RAX, RCX, RDX, RDI, RSI, R8, R9, R10, R11]
 
 increase :: Register -> Register
 increase AL = RAX
@@ -165,78 +168,82 @@ shrink R14 TByte = R14B
 shrink R15 TInt = R15D
 shrink R15 TByte = R15B
 shrink x TRef = x
-shrink reg typ = shrink typ (increase reg)
+shrink reg typ = shrink (increase reg) typ -- Non 64 bit register shrink
 
 getRegisterSize :: Register -> S.Type
-getRegisterSize EAX = IntT
-getRegisterSize AL = ByteT
-getRegisterSize EBX = IntT
-getRegisterSize BL = ByteT
-getRegisterSize ECX = IntT
-getRegisterSize CL = ByteT
-getRegisterSize EDX = IntT
-getRegisterSize DL = ByteT
-getRegisterSize ESI = IntT
-getRegisterSize SIL = ByteT
-getRegisterSize EDI = IntT
-getRegisterSize DIL = ByteT
-getRegisterSize R8D = IntT
-getRegisterSize R8B = ByteT
-getRegisterSize R9D = IntT
-getRegisterSize R9B = ByteT
-getRegisterSize R10D = IntT
-getRegisterSize R10B = ByteT
-getRegisterSize R11D = IntT
-getRegisterSize R11B = ByteT
-getRegisterSize R12D = IntT
-getRegisterSize R12B = ByteT
-getRegisterSize R13D = IntT
-getRegisterSize R13B = ByteT
-getRegisterSize R14D = IntT
-getRegisterSize R14B = ByteT
-getRegisterSize R15D = IntT
-getRegisterSize R15B = ByteT
-getRegisterSize x = Reference
+getRegisterSize EAX = TInt
+getRegisterSize AL = TByte
+getRegisterSize EBX = TInt
+getRegisterSize BL = TByte
+getRegisterSize ECX = TInt
+getRegisterSize CL = TByte
+getRegisterSize EDX = TInt
+getRegisterSize DL = TByte
+getRegisterSize ESI = TInt
+getRegisterSize SIL = TByte
+getRegisterSize EDI = TInt
+getRegisterSize DIL = TByte
+getRegisterSize R8D = TInt
+getRegisterSize R8B = TByte
+getRegisterSize R9D = TInt
+getRegisterSize R9B = TByte
+getRegisterSize R10D = TInt
+getRegisterSize R10B = TByte
+getRegisterSize R11D = TInt
+getRegisterSize R11B = TByte
+getRegisterSize R12D = TInt
+getRegisterSize R12B = TByte
+getRegisterSize R13D = TInt
+getRegisterSize R13B = TByte
+getRegisterSize R14D = TInt
+getRegisterSize R14B = TByte
+getRegisterSize R15D = TInt
+getRegisterSize R15B = TByte
+getRegisterSize x = TRef
 
-data Val = 
+data AVal = 
     VConst Integer
   | VReg Register 
-  | VMem Register (Maybe (Registre, Integer)) (Maybe Integer) (Maybe S.Type) -- TODO clean [r1 + r2*c1 + c2] 
+  | VMem Register (Maybe (Register, Integer)) (Maybe Integer) (Maybe S.Type) -- TODO clean [r1 + r2*c1 + c2] 
   | VLoc Integer
   | VLab String 
   deriving (Eq, Ord)
 
-instance Show Val where
-  show (VConst i) = show i
+instance Show AVal where
+  show (Assembler.VConst i) = show i
   show (VReg r) = show r
   show (VMem r mri mi _) = concat ["[", show r, ri, i, "]"]
     where
       ri = case mri of
-        Just (r2, i1) -> concat [" + ", show r ++ "*" ++ show i]
+        Just (r2, i1) -> concat [" + ", show r ++ "*" ++ show i1]
         Nothing -> ""
-      mi = case mi of
+      i = case mi of
         Just 0 -> ""
-        Just i2 | i2 < 0 -> " - " ++ show (-i)
-        Just i2 | i2 > 0 -> " + " ++ show i
+        Just i2 | i2 < 0 -> " - " ++ show (-i2)
+        Just i2 | i2 > 0 -> " + " ++ show i2
         Nothing -> ""
   show (VLoc i) = "$+" ++ show i
   show (VLab s) = s
 
-isRegisterValue :: Val -> Bool 
+isRegisterValue :: AVal -> Bool 
 isRegisterValue (VReg _) = True
 isRegisterValue _ = False
 
-isMemoryValue :: Val -> Bool 
+isMemoryValue :: AVal -> Bool 
 isMemoryValue (VMem _ _ _ _) = True
 isMemoryValue _ = False
 
-shrinkRegisterValue :: S.Type -> Val -> Val 
-shrinkRegisterValue typ (Reg reg) = Reg (shrink typ reg)
+isStackPointer :: AVal -> Bool
+isStackPointer (VReg RSP) = True
+isStackPointer _ = False
+
+shrinkRegisterValue :: S.Type -> AVal -> AVal 
+shrinkRegisterValue typ (VReg reg) = VReg (shrink reg typ)
 shrinkRegisterValue _ x = x
 
-increaseRegisterValue :: Val -> Val 
-increaseRegisterValue (Reg reg) = Reg (increase reg)
+increaseRegisterValue :: AVal -> AVal 
+increaseRegisterValue (VReg reg) = VReg (increase reg)
 increaseRegisterValue x = x
 
-getRegisterValueSize :: Val -> S.Type
-getRegisterValueSize (Reg reg) = getRegisterSize reg
+getRegisterValueSize :: AVal -> S.Type
+getRegisterValueSize (VReg reg) = getRegisterSize reg
