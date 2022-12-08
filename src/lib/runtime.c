@@ -4,9 +4,9 @@
 #include <string.h>
 
 
-extern Type _class_Str;
-extern Type _class_Obj;
-extern Type _class_Arr;
+extern Type _class_String;
+extern Type _class_Object;
+extern Type _class_Array;
 
 extern void bzero(void *s, size_t n);
 extern void *memcpy(void *dest, const void *src, size_t n);
@@ -18,7 +18,7 @@ uint8_t empty[] = "";
 obj _new(Type *t) {
   obj res = malloc(sizeof(struct ObjReference));
   res->type = t;
-  if (t->size > 0 && t != &_class_Arr && t != &_class_Str) {
+  if (t->size > 0 && t != &_class_Array && t != &_class_String) {
     res->data = malloc(t->size);
     bzero(res->data, t->size);
   } else {
@@ -26,32 +26,6 @@ obj _new(Type *t) {
   }
 
   return res;
-}
-
-void _free(obj o) {
-  if (o->type == &_class_Arr) {
-    Array *arr = o->data;
-    void **is = arr->items;
-
-    if (is != NULL) {
-      free(is);
-    }
-    return;
-  }
-
-  if (o->type == &_class_Str) {
-    void *d = ((Str *)o->data)->data;
-    if (d != NULL && d != empty) {
-      free(d);
-    }
-  }
-
-  if (o->data != NULL) {
-    free(o->data);
-  }
-  free(o);
-
-  return;
 }
 
 obj _cast(obj o, Type *t) {
@@ -90,8 +64,12 @@ obj _new_obj_arr(int32_t len) {
   return _new_arr(len, sizeof(obj));
 }
 
+obj _new_byte_arr(int32_t len) {
+  return _new_arr(len, sizeof(int8_t));
+}
+
 obj _new_arr(int32_t len, int32_t size) {
-  obj o = _new(&_class_Arr);
+  obj o = _new(&_class_Array);
   Array *arr = malloc(sizeof(Array));
   
   o->data = arr;
@@ -119,7 +97,7 @@ obj _new_string(char *c) {
     return _new_string(empty);
   }
 
-  obj o = _new(&_class_Str);
+  obj o = _new(&_class_String);
   Str *str = malloc(sizeof(Str));
   o->data = str;
   str->len = strlen(c);
@@ -196,7 +174,7 @@ int8_t _error() {
 }
 
 int8_t _equals_str(obj o1, obj o2) {
-  if (o2 == NULL || o2->type != &_class_Str || _length_str(o1) != _length_str(o2)) {
+  if (o2 == NULL || o2->type != &_class_String || _length_str(o1) != _length_str(o2)) {
     return 0;
   }
   uint8_t *str1 = ((Str *)o1->data)->data;

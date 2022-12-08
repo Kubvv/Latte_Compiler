@@ -4,20 +4,20 @@
 #include <inttypes.h>
 
 typedef struct Str {
-  uint8_t *data;
   int32_t len;
+  uint8_t *data;
 } Str;
 
 typedef struct Array {
-  void *items;
   int32_t itemSize;
+  void *items;
   int32_t len;
 } Array;
 
 typedef struct __attribute__((__packed__)) Type {
   struct Type *inhParent;
-  void *methods;
   int32_t size;
+  void *methods;
   int32_t *referenceOffsets;
   int32_t *referenceOffsetsSize;
 } Type;
@@ -28,12 +28,12 @@ typedef struct __attribute__((__packed__)) ObjReference {
 } *obj;
 
 obj _new(Type *t);
-void _free(obj o);
 
 obj _cast(obj o, Type *t);
 
 void *_getarritemptr(obj arrObj, int32_t ind);
 obj _new_int_arr(int32_t len);
+obj _new_byte_arr(int32_t len);
 obj _new_obj_arr(int32_t len);
 obj _new_arr(int32_t len, int32_t size);
 obj _new_string(char *c);
