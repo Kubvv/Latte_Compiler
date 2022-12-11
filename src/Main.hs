@@ -26,9 +26,7 @@ import Ssa
 import SsaData as S
 import Revamper
 
-import LivenessCheck
 import Assembler
-import RegisterAlloc
 import Generator
 import Extractor
 
@@ -103,6 +101,8 @@ runInterTranslate out prog cs =
 runAssemblyBuild :: String -> S.Program -> IO ()
 runAssemblyBuild out prog =
   do
+    final <- generate prog
+    extract out final
     hPutStrLn stderr "OK"
     exitSuccess
 

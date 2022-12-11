@@ -27,8 +27,11 @@ parser:
 	happy -gcai ./src/Frontend/Parser/ParLatte.y -o ./src/Frontend/Parser/ParLatte.hs
 	alex -g ./src/Frontend/Parser/LexLatte.x
 
-native_runtime: src/lib/runtime.h src/lib/runtime.c
-	gcc -O2 -c src/lib/runtime.c -o src/lib/runtime.o 
+native_runtime: src/Library/runtime.h src/Library/runtime.c
+	gcc -O2 -c src/Library/runtime.c -o src/Library/runtime.o
+	mkdir -p lib
+	cp src/Library/runtime.o lib/runtime
+	cp src/Library/externs lib/runtime.ext 
 
 compiler: ./src/Main.hs ${synthesisSources} ${parserSources} ${interludeSources} ${backendSources}
 	ghc --make -isrc/Frontend/Parser:src/Frontend/Synthesis:src/Interlude:src/Backend ./src/Main.hs -o latc
@@ -45,3 +48,4 @@ clean:
 	rm -f src/Backend/*.o
 	rm -f src/lib/*.o
 	rm -f latc
+	rm -r lib
