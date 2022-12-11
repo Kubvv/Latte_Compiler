@@ -65,6 +65,7 @@ putCurrRanges liveness args vran rstate@(RegState range vm stc) (x, [val]) =
       modrstate = if P.null found then rstate else RegState range (modifyRegStateMap x val vm) stc
 
 modifyRegStateMap :: String -> AVal -> ValMap -> ValMap
+modifyRegStateMap x v [] = [(x, [v])]
 modifyRegStateMap x1 v ((x2, vs):vms)
   | x1 == x2 = (x2, v : vs) : vms
   | otherwise = (x2, vs) : modifyRegStateMap x1 v vms

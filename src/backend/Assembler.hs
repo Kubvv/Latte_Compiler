@@ -6,9 +6,10 @@ data Program = Prog [AStmt]
   deriving (Eq, Show)
 
 data AStmt =
-    Global String
-  | Section String
-  | SetLabel String
+    Glo String
+  | Sec String
+  | PutLab String
+  | Ext [String]
   | MOV AVal AVal
   | ADD AVal AVal
   | SUB AVal AVal
@@ -32,15 +33,16 @@ data AStmt =
   | JG AVal
   | JGE AVal
   | CALL AVal
-  | LEAVE
   | RET
   | PUSH AVal
   | POP AVal
   | DB AVal
+  | DBq AVal
   | DW AVal
   | DD AVal
   | DQ AVal
   deriving (Eq, Show)
+
 
 data Register = 
     RAX 
@@ -91,6 +93,20 @@ data Register =
 
 modifiableRegisters :: [Register]
 modifiableRegisters = [RAX, RCX, RDX, RDI, RSI, R8, R9, R10, R11]
+
+argumentRegisters :: [Register]
+argumentRegisters = [RDI, RSI, RDX, RCX, R8, R9]
+
+divideRegisters :: [Register]
+divideRegisters = [RAX, RDX]
+
+switchRegister :: Register -> Register -> (Register, AVal) -> (Register, AVal)
+switchRegister old new (r, (VReg r2))  | increase r2 == increase old = (r, VReg (shrink new (getRegisterSize r2)))
+switchRegister _ _ rav = rav 
+
+switchVRegister :: Register -> Register -> AVal ->  AVal
+switchVRegister old new (VReg r) | increase r == increase old = VReg (shrink new (getRegisterSize r))
+switchVRegister _ _ v = v
 
 increase :: Register -> Register
 increase AL = RAX
@@ -205,7 +221,6 @@ data AVal =
     VConst Integer
   | VReg Register 
   | VMem Register (Maybe (Register, Integer)) (Maybe Integer) (Maybe S.Type) -- TODO clean [r1 + r2*c1 + c2] 
-  | VLoc Integer
   | VLab String 
   deriving (Eq, Ord)
 
@@ -222,28 +237,41 @@ instance Show AVal where
         Just i2 | i2 < 0 -> " - " ++ show (-i2)
         Just i2 | i2 > 0 -> " + " ++ show i2
         Nothing -> ""
-  show (VLoc i) = "$+" ++ show i
   show (VLab s) = s
 
 isRegisterValue :: AVal -> Bool 
 isRegisterValue (VReg _) = True
 isRegisterValue _ = False
 
+isConstantValue :: AVal -> Bool
+isConstantValue (Assembler.VConst _) = True
+isConstantValue _ = False
+
 isMemoryValue :: AVal -> Bool 
 isMemoryValue (VMem _ _ _ _) = True
 isMemoryValue _ = False
 
-isStackPointer :: AVal -> Bool
-isStackPointer (VReg RSP) = True
-isStackPointer _ = False
+isStackRegister :: AVal -> Bool
+isStackRegister (VReg RSP) = True
+isStackRegister _ = False
+
+isTemporaryRegister :: AVal -> Bool
+isTemporaryRegister (VReg r) | increase r == RBX = True
+isTemporaryRegister _ = False
+
+notConstant :: Integer -> AVal
+notConstant x 
+  | x == 0 = Assembler.VConst 1
+  | x == 1 = Assembler.VConst 0
 
 shrinkRegisterValue :: S.Type -> AVal -> AVal 
 shrinkRegisterValue typ (VReg reg) = VReg (shrink reg typ)
 shrinkRegisterValue _ x = x
 
-increaseRegisterValue :: AVal -> AVal 
-increaseRegisterValue (VReg reg) = VReg (increase reg)
-increaseRegisterValue x = x
+getRegisterFromValue :: AVal -> Maybe Register
+getRegisterFromValue (VReg r) = Just r
+getRegisterFromValue _ = Nothing
 
-getRegisterValueSize :: AVal -> S.Type
-getRegisterValueSize (VReg reg) = getRegisterSize reg
+getMemTypeFromValue :: AVal -> Maybe Type
+getMemTypeFromValue (VMem _ _ _ mtyp) = mtyp
+getMemTypeFromValue _ = Nothing

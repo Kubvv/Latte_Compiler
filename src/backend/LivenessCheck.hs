@@ -46,7 +46,7 @@ cleanStmtFlow (line, stmt, link, before, after) = (stmt, S.toList before, S.toLi
 
 -- Prepares the given statements by adding line numbers and before & after sets, then the prepared
 -- statements are used in the process of building the before & after sets
-checkLiveness :: [Stmt] -> [(Stmt, [String], [String])]
+checkLiveness :: [Stmt] -> [LiveStmt]
 checkLiveness stmts =
   P.map cleanStmtFlow (buildBefAftSets prepStmts)
     where
