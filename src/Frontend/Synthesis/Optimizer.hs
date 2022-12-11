@@ -538,7 +538,7 @@ renameProgVar (Program pos defs) =
 renameDefVar :: Def -> ExceptMonad Def
 renameDefVar (FnDef pos typ id args block) = 
   do
-    res <- evalStateT (renameBlockVar block) (VState M.empty 0)
+    res <- evalStateT (renameBlockVar block) (VState [] 0)
     return (FnDef pos typ id args res)
 renameDefVar (ClsDef pos id inh es) =
   do
@@ -550,7 +550,7 @@ renameDefVar (ClsDef pos id inh es) =
 renameElemVar :: ClsDef -> ExceptMonad ClsDef
 renameElemVar (MetDef pos typ id args block) =
   do
-    res <- evalStateT (renameBlockVar block) (VState M.empty 0)
+    res <- evalStateT (renameBlockVar block) (VState [] 0)
     return (MetDef pos typ id args res)
 renameElemVar cd@(AtrDef pos typ id) = return cd 
 
@@ -588,6 +588,7 @@ renameStmtVar (BlockS pos block) =
     store <- get
     put (newBlock store)
     res <- renameBlockVar block
+    put store
     return (BlockS pos res)
 renameStmtVar (Decl pos inits) =
   do

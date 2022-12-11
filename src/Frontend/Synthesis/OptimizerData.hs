@@ -104,7 +104,7 @@ setInside :: ConstEnv -> ConstEnv
 setInside (CEnv varMap b set) = CEnv varMap True S.empty
 
 data VarState = VState {
-  nameMap :: M.Map String String, -- Holds mapping of old variable names to new variable names
+  nameMap :: [(String, String)], -- Holds mapping of old variable names to new variable names
   scopeCounter :: Int -- Describes the number of encounterd scopes, used in renaming the vars
 }
 
@@ -114,8 +114,8 @@ newBlock (VState nameMap scopeCounter) = VState nameMap (scopeCounter + 1)
 
 -- Get the new naming based on the old one
 getvStore :: String -> VarState -> Maybe String
-getvStore s (VState nameMap _) = M.lookup s nameMap
+getvStore s (VState nameMap _) = L.lookup s nameMap
 
 -- Put a new entry to the map
 putvStore :: String -> String -> VarState -> VarState
-putvStore s1 s2 (VState nameMap scopeCounter) = VState (M.insert s1 s2 nameMap) scopeCounter
+putvStore s1 s2 (VState nameMap scopeCounter) = VState ((s1,s2) : nameMap) scopeCounter
