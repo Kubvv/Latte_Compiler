@@ -80,8 +80,6 @@ defaultFunctions = [
     Fun "readInt" TInt [] [],
     Fun "readString" TRef [] [],
     Fun "error" TByte [] [],
-    Fun "intToString" TRef [] [],
-    Fun "boolToString" TRef [] [],
     Fun "_String_equals" TByte [] [],
     Fun "_String_concat" TRef [] [],
     Fun "_String_length" TInt [] [],
@@ -130,6 +128,10 @@ getAttributeType (s,t,i) = t
 
 getAttributeOffset :: (String, Type, Integer) -> Integer
 getAttributeOffset (s,t,i) = i
+
+isAttributeReferenceType :: (String, Type, Integer) -> Bool
+isAttributeReferenceType (_,t,_) | t == TRef = True
+isAttributeReferenceType _ = False
 
 
 data Function = Fun String Type [(Type, String)] [Stmt]
@@ -187,11 +189,28 @@ getStmtVars (Jmp {}) = []
 getStmtVars (JmpCond _ _ v1 v2) = catMaybes (getValVar v1 : [getValVar v2])
 getStmtVars (PutLab {}) = []
 
--- Used later on in creating a set
+-- Used later on when creating a set
 getAssignmentStr :: Stmt -> [String]
 getAssignmentStr (Decl _ s _) = [s]
 getAssignmentStr (Ass _ (LVar s) _) = [s]
 getAssignmentStr _ = []
+
+isReferenceAssignment :: Stmt -> Bool
+isReferenceAssignment (Decl _ _ (FunApp _ args)) | length args > 6 = True
+isReferenceAssignment (Decl _ _ (MetApp _ _ args)) | length args > 6 = True
+isReferenceAssignment (Ass _ (LElem {}) _) = True
+isReferenceAssignment (Ass _ (LArr {}) _) = True
+isReferenceAssignment (Ass _ _ (FunApp _ args)) | length args > 6 = True
+isReferenceAssignment (Ass _ _ (MetApp _ _ args)) | length args > 6 = True
+isReferenceAssignment (Ret _ (FunApp _ args)) | length args > 6 = True
+isReferenceAssignment (Ret _ (MetApp _ _ args)) | length args > 6 = True
+isReferenceAssignment _ = False
+
+isReferenceExpr :: Stmt -> Bool
+isReferenceExpr (Decl _ _ e) = isMethodOrArrayExpr e
+isReferenceExpr (Ass _ _ e) = isMethodOrArrayExpr e
+isReferenceExpr (Ret _ e) = isMethodOrArrayExpr e
+isReferenceExpr _ = False
 
 
 data Expr =
@@ -245,6 +264,12 @@ notReplaceableExpr (Ram {}) = False
 notReplaceableExpr (Value (VVar _)) = False
 notReplaceableExpr _ = True
 
+isMethodOrArrayExpr :: Expr -> Bool
+isMethodOrArrayExpr (ArrAcs {}) = True
+isMethodOrArrayExpr (MetApp {}) = True
+isMethodOrArrayExpr (Elem {}) = True
+isMethodOrArrayExpr _ = False
+
 
 data Type = 
     TInt
@@ -292,6 +317,19 @@ negateRelOperator Neq = Equ
 negateRelOperator Gt = Le
 negateRelOperator Ge = Lt
 
+reverseRelOperator :: RelOp -> RelOp
+reverseRelOperator Lt = Gt
+reverseRelOperator Le = Ge
+reverseRelOperator Equ = Equ
+reverseRelOperator Neq = Neq
+reverseRelOperator Gt = Lt 
+reverseRelOperator Ge = Le
+
+isEquNeq :: RelOp -> Bool
+isEquNeq Equ = True
+isEquNeq Neq = True
+isEquNeq _ = False 
+
 
 data Op =
     Add
@@ -311,6 +349,11 @@ instance Show Op where
   show Mod = "%"
   show And = "&&"
   show Or = "||"
+
+getOperatorSize :: Op -> Type
+getOperatorSize And = TByte
+getOperatorSize Or = TByte
+getOperatorSize _ = TInt
 
 
 data LType =
