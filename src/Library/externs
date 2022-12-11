@@ -2,7 +2,7 @@ extern _new
 extern _cast
 extern _getarritemptr
 extern _new_int_arr
-extrem _new_byte_arr
+extern _new_byte_arr
 extern _new_obj_arr
 extern _new_arr
 extern _new_string
@@ -12,8 +12,8 @@ extern _printString
 extern _readInt
 extern _readString
 extern _error
-extern _equals_str
-extern _concat_str
-extern _length_str
-extern _equals_obj
-extern _to_string_obj
+extern _String_equals
+extern _String_concat
+extern _String_length
+extern _Object_equals
+extern _Object_toString

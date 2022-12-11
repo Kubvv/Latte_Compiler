@@ -46,10 +46,10 @@ int32_t _readInt();
 obj _readString();
 int8_t _error();
 
-int8_t _equals_str(obj o1, obj o2);
-obj _concat_str(obj o1, obj o2);
-int32_t _length_str(obj o);
-int8_t _equals_obj(obj o1, obj o2);
-obj _to_string_obj(obj o);
+int32_t _String_length(obj o);
+int8_t _String_equals(obj o1, obj o2);
+obj _String_concat(obj o1, obj o2);
+int8_t _Object_equals(obj o1, obj o2);
+obj _Object_toString(obj o);
 
 #endif
