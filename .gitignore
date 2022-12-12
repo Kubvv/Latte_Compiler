@@ -34,3 +34,4 @@ tests_before_optim.txt
 examples/good/*.s
 .gdb_history
 lib/
+tester/*
