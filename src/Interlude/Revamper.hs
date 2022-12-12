@@ -29,7 +29,7 @@ checkLaterAppearance stmts x =
   x `notElem` stmtVars
     where stmtVars = concatMap getStmtVars stmts
 
-checkLaterAssignment :: [Stmt] -> String -> Bool --TODO remember about diff in liveness
+checkLaterAssignment :: [Stmt] -> String -> Bool
 checkLaterAssignment [] _ = True
 checkLaterAssignment ((Decl _ s _) : stmts) x | x == s = False
 checkLaterAssignment ((Ass _ (LVar s) _) : stmts) x | x == s = False
