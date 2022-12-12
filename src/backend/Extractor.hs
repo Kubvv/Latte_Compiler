@@ -7,12 +7,19 @@ import System.Directory
 
 import Assembler
 
+{- Extractor is responsible for the final translation of an assembler 
+ - program into a string form and extracting the code to the files:
+ - .s - contating the generated assembler code 
+ - .o - being a compiled .s file using nasm (.o is deleted after creating an executable)
+ - executable out - an executable with linked .o file and the runtime library from lib -}
+
 assemblerToString :: Program -> String
 assemblerToString (Prog stmts) = 
   prolog ++ intercalate "\n" (map printStmt stmts)
     where
-      prolog = "%include 'lib/runtime.ext'\n"
+      prolog = "%include 'lib/runtime.ext'\n" --Include the externs from library (TODO think about removing this)
 
+-- Converts the assembler statements into a string form
 printStmt :: AStmt -> String
 printStmt (Glo s) = "global " ++ s
 printStmt (Sec s) = "section ." ++ s
@@ -49,6 +56,9 @@ printStmt (DW v) = "  DW " ++ show v
 printStmt (DD v) = "  DD " ++ show v
 printStmt (DQ v) = "  DQ " ++ show v
 
+-- Translates the assembler program into a string form and
+-- generates .s, .o and executable files. File .o is removed
+-- after the compilation with gcc
 extract :: String -> Program -> IO ()
 extract file prog =
   do
