@@ -215,7 +215,3 @@ int8_t _Object_equals(obj o1, obj o2) {
   return (o1 == o2);
 }
 
-obj _Object_toString(obj o) {
-  return _new_string("Object");
-}
-

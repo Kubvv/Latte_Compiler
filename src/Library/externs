@@ -16,4 +16,3 @@ extern _String_equals
 extern _String_concat
 extern _String_length
 extern _Object_equals
-extern _Object_toString
