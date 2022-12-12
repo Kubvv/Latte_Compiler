@@ -57,6 +57,5 @@ externClass = [
     "_String_equals",
     "_String_concat",
     "_String_length",
-    "_Object_equals",
-    "_Object_toString"
+    "_Object_equals"
   ]

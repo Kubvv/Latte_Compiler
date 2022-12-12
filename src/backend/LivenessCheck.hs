@@ -40,9 +40,9 @@ linkProgramFlow _ (line, stmt) =
 addLivenessSets :: (Integer, Stmt, [Integer]) -> (Integer, Stmt, [Integer], Set String, Set String)
 addLivenessSets (line, stmt, link) = (line, stmt, link, S.empty, S.empty)
 
--- Removes unneccessary data from statements (line and links) and swaps sets to list for easier access
+-- Removes unneccessary data from statements (line and links) and swaps sets to lists for easier access
 cleanStmtFlow :: (Integer, Stmt, [Integer], Set String, Set String) -> (Stmt, [String], [String])
-cleanStmtFlow (line, stmt, link, before, after) = (stmt, S.toList before, S.toList after) --TODO Think about names from & to
+cleanStmtFlow (line, stmt, link, before, after) = (stmt, S.toList before, S.toList after)
 
 -- Prepares the given statements by adding line numbers and before & after sets, then the prepared
 -- statements are used in the process of building the before & after sets

@@ -521,7 +521,7 @@ generateCallArgs fReg ((dest, v):rargs) sargs =
     generateCallArgs fReg rargs sargs
   else do
     generateCallArgs fReg rargs sargs
-    tell $ Endo ([MOV (VReg dest) v]<>) --TODO why swapped ????
+    tell $ Endo ([MOV (VReg dest) v]<>)
 generateCallArgs _ [] sargs =
   do
     tell $ Endo ([MOV (VReg RBX) (VReg RSP)]<>)
