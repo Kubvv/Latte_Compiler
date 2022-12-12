@@ -114,8 +114,7 @@ defaultClasses = [
       Method Default (TInt Default) (Ident "length") []
     ],
   Class Default (Ident "Object") Nothing [
-      Method Default (TBool Default) (Ident "equals") [TClass Default (Ident "Object")],
-      Method Default (TStr Default) (Ident "toString") []
+      Method Default (TBool Default) (Ident "equals") [TClass Default (Ident "Object")]
     ],
   Class Default (Ident "Array") (Just (Ident "Object")) [
       Attribute Default (Ident "length") (TInt Default),
@@ -131,9 +130,7 @@ defaultFunctions = [
   Function Default (TVoid Default) (Ident "printString") [TStr Default],
   Function Default (TInt Default) (Ident "readInt") [],
   Function Default (TStr Default) (Ident "readString") [],
-  Function Default (TVoid Default) (Ident "error") [],
-  Function Default (TStr Default) (Ident "intToString") [TInt Default], --TODO może do wywalenia
-  Function Default (TStr Default) (Ident "boolToString") [TBool Default]
+  Function Default (TVoid Default) (Ident "error") []
   ]
 
 -- Check whether a function represented by a string is a default function

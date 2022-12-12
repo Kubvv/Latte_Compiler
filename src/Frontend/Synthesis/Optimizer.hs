@@ -115,6 +115,7 @@ cutBlockConst (Block pos stmts) =
 -- Process one declaration at a time, perform tail recursion
 -- Init: save initialized variable to env as const iff expresion is Prim
 -- NoInit: save declared variable to env as const with default value saved (0, false or null)
+--    change NoInit constructor to Init with default value 
 cutInitConst :: Inits -> ConstMonad (Inits, ConstEnv -> ConstEnv)
 cutInitConst [] = return ([], id)
 cutInitConst ((typ, Init pos id e):is) =
