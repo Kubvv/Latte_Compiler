@@ -242,8 +242,8 @@ getDeclTyp _ = Nothing
 -- Gets all string variables used in a given statement, including a newly
 -- declared variable from a Decl stmt
 getDeclAppVars :: Stmt -> [String]
-getDeclAppVars (Decl _ s e@(FunApp {})) = [s] ++ getExprVars e
-getDeclAppVars (Decl _ s e@(MetApp {})) = [s] ++ getExprVars e
+getDeclAppVars (Decl _ s e@FunApp {}) = s : getExprVars e
+getDeclAppVars (Decl _ s e@MetApp {}) = s : getExprVars e
 getDeclAppVars s = getStmtVars s
 
 -- Gets all string variables used in a given stmt, excluding newly declared variables
@@ -252,9 +252,9 @@ getStmtVars (Decl _ _ e) = getExprVars e
 getStmtVars (Ass _ ltyp e) = getLTypeVars ltyp ++ getExprVars e
 getStmtVars (Ret _ e) = getExprVars e
 getStmtVars RetV = []
-getStmtVars (Jmp {}) = []
+getStmtVars Jmp {} = []
 getStmtVars (JmpCond _ _ v1 v2) = catMaybes (getValVar v1 : [getValVar v2])
-getStmtVars (PutLab {}) = []
+getStmtVars PutLab {} = []
 
 -- Gets the name of a variable that we are assiging to. The result is returned in 
 -- the list since it's used later on when creating a set
@@ -267,8 +267,8 @@ getAssignmentStr _ = []
 isReferenceAssignment :: Stmt -> Bool
 isReferenceAssignment (Decl _ _ (FunApp _ args)) | length args > 6 = True
 isReferenceAssignment (Decl _ _ (MetApp _ _ args)) | length args > 6 = True
-isReferenceAssignment (Ass _ (LElem {}) _) = True
-isReferenceAssignment (Ass _ (LArr {}) _) = True
+isReferenceAssignment (Ass _ LElem {} _) = True
+isReferenceAssignment (Ass _ LArr {} _) = True
 isReferenceAssignment (Ass _ _ (FunApp _ args)) | length args > 6 = True
 isReferenceAssignment (Ass _ _ (MetApp _ _ args)) | length args > 6 = True
 isReferenceAssignment (Ret _ (FunApp _ args)) | length args > 6 = True
@@ -320,7 +320,7 @@ instance Show Expr where
   show (Value v) = show v
 
 isRamExpr :: Expr -> Bool
-isRamExpr (Ram {}) = True
+isRamExpr Ram {} = True
 isRamExpr _ = False
 
 -- Gets all string variables used in a given expr
@@ -338,19 +338,19 @@ getExprVars _ = []
 
 -- TODO?
 notReplaceableExpr :: Expr -> Bool
-notReplaceableExpr (Cast {}) = False
-notReplaceableExpr (NewString {}) = False
-notReplaceableExpr (Not {}) = False
-notReplaceableExpr (Ram {}) = False
+notReplaceableExpr Cast {} = False
+notReplaceableExpr NewString {} = False
+notReplaceableExpr Not {} = False
+notReplaceableExpr Ram {} = False
 notReplaceableExpr (Value (VVar _)) = False
 notReplaceableExpr _ = True
 
 -- Return true if a given expr is an array access, method
 -- application or class element access
 isMethodOrArrayExpr :: Expr -> Bool
-isMethodOrArrayExpr (ArrAcs {}) = True
-isMethodOrArrayExpr (MetApp {}) = True
-isMethodOrArrayExpr (Elem {}) = True
+isMethodOrArrayExpr ArrAcs {} = True
+isMethodOrArrayExpr MetApp {} = True
+isMethodOrArrayExpr Elem {} = True
 isMethodOrArrayExpr _ = False
 
 -- Type includes all possible Ssa types that can be linked
@@ -465,12 +465,12 @@ getLVarName _ = ""
 
 -- Gets all string variables used in a given left value type
 getLTypeVars :: LType -> [String]
-getLTypeVars (LVar {}) = []
+getLTypeVars LVar {} = []
 getLTypeVars (LArr s v) = s : catMaybes [getValVar v]
 getLTypeVars (LElem s i) = [s]
 
 isLVar :: LType -> Bool
-isLVar (LVar {}) = True
+isLVar LVar {} = True
 isLVar _ = False
 
 -- Val is used as a description of a simple const or variable value
@@ -485,12 +485,12 @@ instance Show Val where
 
 -- VVar name getter
 getVarName :: Val -> String
-getVarName (VConst {}) = ""
+getVarName VConst {} = ""
 getVarName (VVar s) = s
 
 -- Gets all string variables used in a given val
 getValVar :: Val -> Maybe String
-getValVar (VConst {}) = Nothing
+getValVar VConst {} = Nothing
 getValVar (VVar s) = Just s
 
 isValVar :: Val -> Bool

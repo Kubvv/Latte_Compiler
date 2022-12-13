@@ -49,9 +49,9 @@ createOffsetSize attrs =
 renameMethods :: [String] -> [String] -> String -> [String]
 renameMethods [] curr name = P.map (\c -> "_" ++ name ++ "_" ++ c) curr
 renameMethods (p:ps) curr name =
-  if modp `elem` curr then 
+  if modp `elem` curr then
     ("_" ++ name ++ "_" ++ modp) : renameMethods ps (curr L.\\ [modp]) name
-  else 
+  else
     p : renameMethods ps curr name
   where
     modp = removeClassPrefix p
@@ -60,7 +60,7 @@ renameMethods (p:ps) curr name =
 -- If class prefix isn't present, function returns the argument
 -- Methods with prefix have a following format: "_{Class name}_{Method name}"
 removeClassPrefix :: String -> String
-removeClassPrefix x = 
+removeClassPrefix x =
   case elemIndex '_' (P.drop 1 x) of
     Nothing -> x
     Just ind -> P.drop (ind + 2) x
@@ -162,13 +162,13 @@ findMethodInClass x (m:ms) i =
     findMethodInClass x ms (i + 1)
 
 -- Translates the whole ast program into a linearized ssa program
-interTranslate :: A.Program -> [T.Class] -> IO (S.Program)
+interTranslate :: A.Program -> [T.Class] -> IO S.Program
 interTranslate prog cs = evalStateT (translateProgram prog cs) S.emptyStore
 
 -- Translate the program by translating classes and functions, then
 -- add all mapped const strings that were encountered during translation
 translateProgram :: A.Program -> [T.Class] -> TranslateMonad S.Program
-translateProgram (A.Program _ defs) cs = 
+translateProgram (A.Program _ defs) cs =
   do
     classes <- getClasses cs
     functions <- getFunctions defs
@@ -206,7 +206,7 @@ translateDef (A.FnDef _ typ (Ident x) args b) =
       translateFunction x args b
     else
       put $ putFunction (S.Fun x (translateType typ) [] []) store
-translateDef (A.ClsDef _ (Ident x) _ es) = 
+translateDef (A.ClsDef _ (Ident x) _ es) =
   do
     mapM_ (translateElement x) es
 
@@ -226,7 +226,7 @@ translateElement s (A.MetDef _ typ (Ident x) args b) =
     else
       put $ putFunction (S.Fun modx (translateType typ) [] []) store
 translateElement _ (A.AtrDef _ typ (Ident x)) = return ()
-    
+
 -- Creates the list of ssa classes by first translating an
 -- existing list of ast classes and then by returning the classes
 -- that were saved in the store
@@ -234,8 +234,7 @@ getClasses :: [T.Class] -> TranslateMonad [S.Class]
 getClasses cs =
   do
     transCls <- mapM_ (translateClass cs) cs
-    store <- get
-    return $ cls store
+    gets cls
 
 -- Translates a single ast class into the ssa class data structure
 -- NoParent: divide the class elements into attributes and methods,
@@ -249,7 +248,7 @@ getClasses cs =
 --    method names and add the not overriden methods of parent class, modify 
 --    the class and parent name and save the result to the store
 translateClass :: [T.Class] -> T.Class -> TranslateMonad S.Class
-translateClass _ (Class _ (Ident x) Nothing es) = 
+translateClass _ (Class _ (Ident x) Nothing es) =
   do
     store <- get
     let (attr, met) = divideElems es [] []
@@ -361,13 +360,13 @@ translateBlock (A.Block _ stmts) =
 -- ExprS: translate the expression and pass
 translateStmt :: A.Stmt -> BuildMonad ()
 translateStmt (Empty _) = return ()
-translateStmt (BlockS _ b) = 
+translateStmt (BlockS _ b) =
   do
-    translateBlock b 
-translateStmt (A.Decl _ ds) = 
+    translateBlock b
+translateStmt (A.Decl _ ds) =
   do
     mapM_ translateDecl ds
-translateStmt (A.Ass _ (A.Var _ (Ident x)) e) = 
+translateStmt (A.Ass _ (A.Var _ (Ident x)) e) =
   do
     estr <- translateExpr e
     store <- get
@@ -388,7 +387,7 @@ translateStmt (A.Ass _ (A.ArrAcs _ e1 e2 _) e3) =
     store <- get
     let modtyp = fromJust $ getType estr3 store
     tell $ Endo ([S.Ass modtyp (LArr estr1 (VVar estr2)) (S.Value (VVar estr3))]<>)
-translateStmt (A.Ret _ e) = 
+translateStmt (A.Ret _ e) =
   do
     estr <- translateExpr e
     store <- get
@@ -396,7 +395,7 @@ translateStmt (A.Ret _ e) =
 translateStmt (A.RetV _) =
   do
     tell $ Endo ([S.RetV]<>)
-translateStmt (Cond _ e s1 s2) = 
+translateStmt (Cond _ e s1 s2) =
   do
     (l1, l2, l3) <- getIfLabels
     translateCond False e l1 l2
@@ -406,7 +405,7 @@ translateStmt (Cond _ e s1 s2) =
     tell $ Endo ([S.PutLab l2]<>)
     translateStmt s2
     tell $ Endo ([S.PutLab l3]<>)
-translateStmt (While _ e s) = 
+translateStmt (While _ e s) =
   do
     (l1, l2, l3) <- getWhileLabels
     tell $ Endo ([S.Jmp l2]<>)
@@ -508,7 +507,7 @@ translateCond b e l1 l2 =
 -- Prim (Other): translates the primitive type and primitive value into a const data, then creates a
 --    declaration that assigns that const to a new ssa variable, then it returns it
 translateExpr :: A.Expr -> BuildMonad String
-translateExpr (A.Cast _ typ e) = 
+translateExpr (A.Cast _ typ e) =
   do
     estr <- translateExpr e
     store <- get
@@ -550,7 +549,7 @@ translateExpr (App _ (A.Elem _ e (Ident x) (Just cname)) args) =
     ssaVar <- getSsaVar typ
     tell $ Endo ([S.Decl typ ssaVar (MetApp estr i vestrs)]<>)
     return ssaVar
-translateExpr (A.Elem _ e (Ident x) (Just cname)) = 
+translateExpr (A.Elem _ e (Ident x) (Just cname)) =
   do
     estr <- translateExpr e
     attr <- getAttribute x cname
@@ -591,9 +590,9 @@ translateExpr (NotNeg _ (Neg _) e) =
     else
       tell $ Endo ([S.Decl typ ssaVar (S.Ram S.Sub (VConst $ S.CInt 0) (VVar estr))]<>)
     return ssaVar
-translateExpr (A.Ram pos (A.Add pos2) e1 (NotNeg pos3 (A.Neg pos4) e2)) = 
+translateExpr (A.Ram pos (A.Add pos2) e1 (NotNeg pos3 (A.Neg pos4) e2)) =
   translateExpr (A.Ram pos (A.Sub pos2) e1 e2)
-translateExpr (A.Ram pos (A.Add pos2) (NotNeg pos3 (A.Neg pos4) e1) e2) = 
+translateExpr (A.Ram pos (A.Add pos2) (NotNeg pos3 (A.Neg pos4) e1) e2) =
   translateExpr (A.Ram pos (A.Sub pos2) e2 e1)
 translateExpr e@(A.Ram _ op e1 e2) | isBoolOperator op =
   do
@@ -619,15 +618,14 @@ translateExpr (A.Ram _ op e1 e2) =
     else
       tell $ Endo ([S.Decl typ ssaVar (S.Ram modop (VVar estr1) (VVar estr2))]<>)
     return ssaVar
-translateExpr (Var _ (Ident x)) = 
+translateExpr (Var _ (Ident x)) =
   do
-    store <- get
-    return $ fromJust $ getName x store
+    gets (fromJust . getName x)
 translateExpr (Prim _ (Str _ x)) =
   do
     store <- get
     let xlab = getStrLabel x store
-    ssaVar <- getSsaVar S.TRef    
+    ssaVar <- getSsaVar S.TRef
     if isNothing xlab then do
       newLab <- getLabelName "_str"
       store2 <- get
@@ -635,13 +633,13 @@ translateExpr (Prim _ (Str _ x)) =
       tell $ Endo ([S.Decl S.TRef ssaVar (S.NewString newLab)]<>)
       return ssaVar
     else do
-      let lab = fromJust xlab 
+      let lab = fromJust xlab
       tell $ Endo ([S.Decl S.TRef ssaVar (S.NewString lab)]<>)
       return ssaVar
 translateExpr (Prim _ pr) =
   do
     let typ = translatePrimToType pr
-    let const = translatePrimToConst pr 
+    let const = translatePrimToConst pr
     ssaVar <- getSsaVar typ
     tell $ Endo ([S.Decl typ ssaVar (S.Value (VConst const))]<>)
     return ssaVar
@@ -681,7 +679,7 @@ translatePrimToType :: A.Prim -> S.Type
 translatePrimToType (Int _ _) = S.TInt
 translatePrimToType (Bool _ _) = S.TByte
 translatePrimToType (Str _ _) = S.TRef
-translatePrimToType (Null _) = S.TRef 
+translatePrimToType (Null _) = S.TRef
 
 -- Translates primitive values of ast into ssa consts
 translatePrimToConst :: A.Prim -> S.Const
