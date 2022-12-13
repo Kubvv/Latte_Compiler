@@ -55,10 +55,10 @@ getFreeOrDefaultRegister gd s r i =
     case getGeneratorAvalFromStr s gd of
       Just r2 | isRegisterValue r2 -> return r2
       Just r2 -> do
-        generateExpr gd (Value (VVar s)) i Nothing (VReg r)
+        generateExpr gd (Value (VVar s)) i TRef (VReg r)
         return (VReg r)
       Nothing -> do
-        generateExpr gd (Value (VVar s)) i Nothing (VReg r)
+        generateExpr gd (Value (VVar s)) i TRef (VReg r)
         return (VReg r)
 
 getFree :: Integer -> RegisterRange -> [Register]
@@ -228,9 +228,9 @@ generateStmt gd (i, Decl typ s e) =
         let dest = case anyReg of
                     [] -> head x
                     (r:_) -> if s `elem` (getLive (i+1) (range (rstate gd))) then r else vr
-        generateExpr gd e i (Just typ) dest
+        generateExpr gd e i typ dest
       Nothing ->
-        generateExpr gd e i (Just typ) vr
+        generateExpr gd e i typ vr
 generateStmt gd (i, Ass typ (LVar x) e) = 
   do
     let vr = VReg (shrink RBX typ)
@@ -241,20 +241,20 @@ generateStmt gd (i, Ass typ (LVar x) e) =
         let dest = case anyReg of
                     [] -> head v
                     (r:_) -> if x `elem` (getLive (i+1) (range (rstate gd))) then r else vr
-        generateExpr gd e i (Just typ) dest
+        generateExpr gd e i typ dest
       Nothing ->
-        generateExpr gd e i (Just typ) vr
+        generateExpr gd e i typ vr
 generateStmt gd (i, Ass typ (LArr x id) e) =
   do
     let shrinked = shrink R12 typ
-    generateExpr gd e i (Just typ) (VReg shrinked)
+    generateExpr gd e i typ (VReg shrinked)
     generateCall gd (VLab "_getarritemptr") [VVar x, id] i typ (VReg R13)
     tell $ Endo ([MOV (VMem R13 Nothing Nothing Nothing) (VReg shrinked)]<>)
 generateStmt gd (i, Ass typ (LElem x off) e) =
   do
     let shrinked = shrink R12 typ
     let tmp = R13
-    generateExpr gd e i (Just typ) (VReg shrinked)
+    generateExpr gd e i typ (VReg shrinked)
     reg <- getFreeOrDefaultRegister gd x tmp i
     let r = fromJust $ getRegisterFromValue reg
     nullCheck r
@@ -262,7 +262,7 @@ generateStmt gd (i, Ass typ (LElem x off) e) =
     tell $ Endo ([MOV (VMem R13 Nothing (Just off) Nothing) (VReg shrinked)]<>)
 generateStmt gd (i, Ret typ e) = 
   do
-    generateExpr gd e i (Just typ) (VReg (shrink RAX typ))
+    generateExpr gd e i typ (VReg (shrink RAX typ))
     tell $ Endo ([JMP (VLab ("fend_" ++ funName gd))]<>)
 generateStmt gd (_, RetV) = 
   do
@@ -300,73 +300,72 @@ generateJmpCond op s av1 av2 =
     tell $ Endo ([jumpType]<>)
 
 
-generateExpr :: GeneratorData -> Expr -> Integer -> Maybe Type -> AVal -> GeneratorMonad () --TODO Maybe type do type jest możliwy
-generateExpr gd (Cast s v) i mtyp dest = 
+generateExpr :: GeneratorData -> Expr -> Integer -> Type -> AVal -> GeneratorMonad ()
+generateExpr gd (Cast s v) i typ dest = 
   do
-    generateCall gd (VLab "_cast") [v, S.VConst (CStr s)] i (fromJust mtyp) dest
-generateExpr gd (ArrAcs s id) i mtyp (VReg r) = 
+    generateCall gd (VLab "_cast") [v, S.VConst (CStr s)] i typ dest
+generateExpr gd (ArrAcs s id) i typ (VReg r) = 
   do
-    generateCall gd (VLab "_getarritemptr") [VVar s, id] i (fromJust mtyp) (VReg R12)
+    generateCall gd (VLab "_getarritemptr") [VVar s, id] i typ (VReg R12)
     tell $ Endo ([MOV (VReg R12) (VMem R12 Nothing Nothing Nothing)]<>)
-generateExpr gd (ArrAcs s id) i mtyp dest =
+generateExpr gd (ArrAcs s id) i typ dest =
   do
-    let typ = fromJust mtyp
     generateCall gd (VLab "_getarritemptr") [VVar s, id] i typ (VReg R12)
     let shrReg = VReg (shrink RBX typ)
     tell $ Endo ([MOV shrReg (VMem R12 Nothing Nothing Nothing)]<>)
     tell $ Endo ([MOV dest shrReg]<>)
-generateExpr gd (FunApp s vs) i mtyp dest = 
+generateExpr gd (FunApp s vs) i typ dest = 
   do
     if s `elem` defaultNonClassFunctions then
-      generateCall gd (VLab ("_" ++ s)) vs i (fromJust mtyp) dest
+      generateCall gd (VLab ("_" ++ s)) vs i typ dest
     else
-      generateCall gd (VLab s) vs i (fromJust mtyp) dest
-generateExpr gd (MetApp s id vs) i mtyp dest =
+      generateCall gd (VLab s) vs i typ dest
+generateExpr gd (MetApp s id vs) i typ dest =
   do
-    generateExpr gd (Value (VVar s)) i Nothing (VReg RBX)
+    generateExpr gd (Value (VVar s)) i TRef (VReg RBX)
     nullCheck RBX
     tell $ Endo ([MOV (VReg R12) (VMem RBX Nothing Nothing Nothing)]<>)
     tell $ Endo ([MOV (VReg R12) (VMem R12 Nothing (Just 12) Nothing)]<>) --TODO check if can be merged
     tell $ Endo ([MOV (VReg R12) (VMem R12 Nothing (Just (id * 8)) Nothing)]<>)
-    generateCall gd (VReg R12) vs i (fromJust mtyp) dest
-generateExpr gd (Elem s id) i mtyp (VReg r) =
+    generateCall gd (VReg R12) vs i typ dest
+generateExpr gd (Elem s id) i typ (VReg r) =
   do
     reg2 <- getFreeOrDefaultRegister gd s R12 i
     let r2 = fromJust $ getRegisterFromValue reg2
     nullCheck r2
     tell $ Endo ([MOV (VReg R12) (VMem r2 Nothing (Just 8) Nothing)]<>)
     tell $ Endo ([MOV (VReg r) (VMem R12 Nothing (Just i) Nothing)]<>)
-generateExpr gd (Elem s id) i mtyp dest =
+generateExpr gd (Elem s id) i typ dest =
   do
-    let tmp = VReg (shrink RBX (fromJust mtyp))
+    let tmp = VReg (shrink RBX typ)
     reg2 <- getFreeOrDefaultRegister gd s R12 i
     let r2 = fromJust $ getRegisterFromValue reg2
     nullCheck r2
     tell $ Endo ([MOV (VReg R12) (VMem r2 Nothing (Just 8) Nothing)]<>)
     tell $ Endo ([MOV tmp (VMem R12 Nothing (Just i) Nothing)]<>)
     tell $ Endo ([MOV dest tmp]<>)
-generateExpr gd (NewObj s) i mtyp dest = 
+generateExpr gd (NewObj s) i typ dest = 
   do
-    generateCall gd (VLab "_new") [S.VConst (CStr s)] i (fromJust mtyp) dest
-generateExpr gd (NewString s) i mtyp dest = 
+    generateCall gd (VLab "_new") [S.VConst (CStr s)] i typ dest
+generateExpr gd (NewString s) i typ dest = 
   do
-    generateCall gd (VLab "_new_string") [S.VConst (CStr s)] i (fromJust mtyp) dest
-generateExpr gd (NewArray TInt v) i mtyp dest =
+    generateCall gd (VLab "_new_string") [S.VConst (CStr s)] i typ dest
+generateExpr gd (NewArray TInt v) i typ dest =
   do
-    generateCall gd (VLab "_new_int_arr") [v] i (fromJust mtyp) dest
-generateExpr gd (NewArray TByte v) i mtyp dest =
+    generateCall gd (VLab "_new_int_arr") [v] i typ dest
+generateExpr gd (NewArray TByte v) i typ dest =
   do
-    generateCall gd (VLab "_new_byte_arr") [v] i (fromJust mtyp) dest
-generateExpr gd (NewArray TRef v) i mtyp dest =
+    generateCall gd (VLab "_new_byte_arr") [v] i typ dest
+generateExpr gd (NewArray TRef v) i typ dest =
   do
-    generateCall gd (VLab "_new_obj_arr") [v] i (fromJust mtyp) dest
-generateExpr _ (Not (S.VConst (CByte x))) i mtyp (VReg r) =
+    generateCall gd (VLab "_new_obj_arr") [v] i typ dest
+generateExpr _ (Not (S.VConst (CByte x))) i typ (VReg r) =
   do 
     tell $ Endo ([MOV (VReg (shrink r TByte)) (notConstant x)]<>)
-generateExpr _ (Not (S.VConst (CByte x))) i mtyp dest =
+generateExpr _ (Not (S.VConst (CByte x))) i typ dest =
   do 
     tell $ Endo ([MOV dest (notConstant x)]<>)
-generateExpr gd (Not (S.VVar x)) i mtyp dest =
+generateExpr gd (Not (S.VVar x)) i typ dest =
   do
     let av = fromJust $ getGeneratorAvalFromStr x gd
     when (not $ isRegisterValue av) $
@@ -381,7 +380,7 @@ generateExpr gd (Not (S.VVar x)) i mtyp dest =
       _ -> do
         tell $ Endo ([TEST (VReg r) (VReg r)]<>)
         tell $ Endo ([SETZ dest]<>)
-generateExpr gd (Ram Div v1 v2) i mtyp dest = 
+generateExpr gd (Ram Div v1 v2) i typ dest = 
   do
     let modv1 = generateValue gd v1
     let modv2 = generateValue gd v2
@@ -389,7 +388,7 @@ generateExpr gd (Ram Div v1 v2) i mtyp dest =
     tell $ Endo ([MOV (VReg EBX) (VReg EAX)]<>)
     tell $ Endo ((after)<>)
     tell $ Endo ([MOV dest (VReg EBX)]<>)
-generateExpr gd (Ram Mod v1 v2) i mtyp dest = 
+generateExpr gd (Ram Mod v1 v2) i typ dest = 
   do
     let modv1 = generateValue gd v1
     let modv2 = generateValue gd v2
@@ -397,21 +396,21 @@ generateExpr gd (Ram Mod v1 v2) i mtyp dest =
     tell $ Endo ([MOV (VReg EBX) (VReg EDX)]<>)
     tell $ Endo ((after)<>)
     tell $ Endo ([MOV dest (VReg EBX)]<>) 
-generateExpr gd (Ram op v1 v2) i mtyp dest = 
+generateExpr gd (Ram op v1 v2) i typ dest = 
   do
     let modv1 = generateValue gd v1
     let modv2 = generateValue gd v2
-    let moddest = shrink RBX (fromMaybe (getOperatorSize op) mtyp)
+    let moddest = shrink RBX typ
     tell $ Endo ([MOV (VReg moddest) modv1]<>)
     tell $ Endo ([generateArth op (VReg moddest) modv2]<>)
     tell $ Endo ([MOV dest (VReg moddest)]<>)
-generateExpr _ (Value (S.VConst x)) i mtyp dest@(VReg r) = 
+generateExpr _ (Value (S.VConst x)) i typ dest@(VReg r) = 
   do
     case x of
       CNull -> tell $ Endo ([XOR dest dest]<>)
       CInt c -> tell $ Endo ([MOV (VReg (shrink r TInt)) (A.VConst c)]<>)
       CByte c -> tell $ Endo ([MOV (VReg (shrink r TByte)) (A.VConst c)]<>)
-generateExpr _ (Value (S.VConst x)) i mtyp dest = 
+generateExpr _ (Value (S.VConst x)) i _ dest = 
   do
     case x of
       CNull -> do
@@ -423,7 +422,7 @@ generateExpr _ (Value (S.VConst x)) i mtyp dest =
       CByte c -> do
         tell $ Endo ([MOV (VReg BL) (A.VConst c)]<>)
         tell $ Endo ([MOV dest (VReg BL)]<>)
-generateExpr gd (Value (S.VVar x)) i mtyp dest = 
+generateExpr gd (Value (S.VVar x)) i _ dest = 
   do
     let av = fromJust $ getGeneratorAvalFromStr x gd
     if isRegisterValue av then
@@ -624,7 +623,7 @@ clearStmts (MOV x1 y1 : CMP x2 z1 : stmts)
     clearStmts (CMP y1 z1 : stmts)
 clearStmts (stmt:stmts) = stmt : clearStmts stmts
 
-clearStack :: [AStmt] -> [AStmt] --TODO think about removing iterativness (or even whole function)
+clearStack :: [AStmt] -> [AStmt]
 clearStack stmts =
   if modstmts == stmts then
     modstmts
@@ -641,4 +640,7 @@ clearStackStmts (MOV x1 y1 : CALL f : MOV y2 x2 : stmts)
 clearStackStmts (ADD x1 y1 : SUB x2 y2 : stmts)
   | isStackAndEqual x1 x2 && y1 == y2 =
     clearStackStmts stmts
+clearStackStmts (SUB x1 (A.VConst i1) : SUB x2 (A.VConst i2) : stmts)
+  | isStackAndEqual x1 x2 =
+    clearStackStmts (SUB x1 (A.VConst (i1 + i2)):stmts)
 clearStackStmts (stmt:stmts) = stmt : clearStackStmts stmts 
