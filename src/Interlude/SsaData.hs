@@ -91,7 +91,7 @@ modifyFunction (f@(Fun s typ args stmts):fs) x modargs modstmts =
 
 -- Finds a function given by its name in the given list of functions
 -- If function is absent, returns Nothing
-getFunction :: String -> [S.Function] -> Maybe S.Function
+getFunction :: String -> [Function] -> Maybe Function
 getFunction _ [] = Nothing
 getFunction s (f:fs) =
   if getFunctionName f == s then
