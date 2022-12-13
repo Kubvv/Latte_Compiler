@@ -105,7 +105,7 @@ convertClasses ((ClsDef pos id inh elemDefs):ds) =
     elems <- mapM convertElems elemDefs
     cls <- convertClasses ds
     return (Class pos id inh elems : cls)
-convertClasses ((FnDef {}):ds) = convertClasses ds
+convertClasses (FnDef {}:ds) = convertClasses ds
 
 -- Look for functions among the defs and convert them to a Function data type
 convertFunctions :: [Def] -> ExceptMonad [Function]
@@ -115,7 +115,7 @@ convertFunctions ((FnDef pos typ id args block):ds) =
     argTypes <- mapM getArgType args
     funs <- convertFunctions ds
     return (Function pos typ id argTypes : funs)
-convertFunctions ((ClsDef {}):ds) = convertFunctions ds
+convertFunctions (ClsDef {}:ds) = convertFunctions ds
 
 -- Look for every class that doesn't have a parent and link it to an Object class
 linkToObject :: [Class] -> ExceptMonad [Class]
@@ -365,8 +365,8 @@ throwIfNoLeftValue pos (Elem epos e id (Just cls)) =
     branch <- lift $ createInheritanceBranch (css env) cls []
     let elems = concatMap (\(Class _ _ _ es) -> es) branch
     throwIfNotAttribute pos id elems
-throwIfNoLeftValue pos (ArrAcs {}) = return ()
-throwIfNoLeftValue pos (Var {}) = return ()
+throwIfNoLeftValue pos ArrAcs {} = return ()
+throwIfNoLeftValue pos Var {} = return ()
 throwIfNoLeftValue pos _ = lift $ throwError (NotALeftValueException pos)
 
 {- All of the following functions are used as typecheckers for all types of

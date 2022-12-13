@@ -62,18 +62,18 @@ getv id env = L.lookup id (varMap env)
 putv :: Ident -> Type -> ConstEnv -> ConstEnv
 putv id typ (CEnv varMap b set) = 
   if b then
-    CEnv ((id, (getCutTypeFromType typ)) : varMap) b (S.insert id set) 
+    CEnv ((id, getCutTypeFromType typ) : varMap) b (S.insert id set) 
   else
-    CEnv ((id, (getCutTypeFromType typ)) : varMap) b set
+    CEnv ((id, getCutTypeFromType typ) : varMap) b set
 
 -- Put a new entry based on ident and expr to map, if the putv function is
 -- called when we're in the if/else/while block, also add the ident to the set of occured idents
 putvexpr :: Ident -> Expr -> ConstEnv -> ConstEnv
 putvexpr id e (CEnv varMap b set) = 
   if b then
-    CEnv ((id, (getCutTypeFromExpr e)) : varMap) b (S.insert id set) 
+    CEnv ((id, getCutTypeFromExpr e) : varMap) b (S.insert id set) 
   else 
-    CEnv ((id, (getCutTypeFromExpr e)) : varMap) b set
+    CEnv ((id, getCutTypeFromExpr e) : varMap) b set
 
 removeLast :: Int -> ConstEnv -> ConstEnv
 removeLast cnt (CEnv varMap b set) = 

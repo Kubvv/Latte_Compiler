@@ -209,7 +209,7 @@ convertStmt (Abs.Decr bnfc e) = Ast.Ass pos newE (Ram pos (Sub pos) newE (Prim p
 
 -- Stmt helper functions
 isDeclStmt :: Ast.Stmt -> Bool
-isDeclStmt (Ast.Decl {}) = True
+isDeclStmt Ast.Decl {} = True
 isDeclStmt _ = False
 
 getStmtPos :: Ast.Stmt -> Pos
@@ -344,7 +344,7 @@ convertString ('\\':c:cs) =
 convertString (c:cs) = c : convertString cs
 
 isPrimExpr :: Ast.Expr -> Bool
-isPrimExpr (Prim {}) = True
+isPrimExpr Prim {} = True
 isPrimExpr _ = False
 
 
@@ -643,11 +643,11 @@ isArrType (TArray _ _) = True
 isArrType _ = False
 
 isFunType :: Ast.Type -> Bool
-isFunType (TFun {}) = True
+isFunType TFun {} = True
 isFunType _ = False
 
 isVoidType :: Ast.Type -> Bool
-isVoidType (TVoid {}) = True
+isVoidType TVoid {} = True
 isVoidType _ = False
 
 isPrimType :: Ast.Type -> Bool

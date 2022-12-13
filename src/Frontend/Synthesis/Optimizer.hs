@@ -103,14 +103,14 @@ cutStmtController (st:sts) =
   do
     (res, change) <- cutStmtConst st
     (reses, changes) <- local change (cutStmtController sts)
-    return ((res:reses), changes . change)
+    return (res:reses, changes . change)
 
 cutBlockConst :: Block -> ConstMonad (Block, ConstEnv -> ConstEnv)
 cutBlockConst (Block pos stmts) =
   do
     let initCount = countInits stmts
     (res, change) <- cutStmtController stmts
-    return ((Block pos res), removeLast initCount . change)
+    return (Block pos res, removeLast initCount . change)
 
 -- Process one declaration at a time, perform tail recursion
 -- Init: save initialized variable to env as const iff expresion is Prim
@@ -281,7 +281,7 @@ cutExprConst (Var pos id) =
     case getv id env of
       Just (Const v) -> return (Prim pos v)
       _ -> return (Var pos id) 
-cutExprConst p@(Prim {}) = return p
+cutExprConst p@Prim {} = return p
 
 -- Cut a relation operation if both left and right values are known and of the same type
 -- If only the left part is known, switch it with the right part and swap the opearator
@@ -445,7 +445,7 @@ crawlStmtReturn :: Stmt -> ExceptMonad Bool
 crawlStmtReturn (BlockS pos (Block _ stmts)) = 
   do 
     crawlStmtController stmts pos True
-crawlStmtReturn (Ret {}) = return True
+crawlStmtReturn Ret {} = return True
 crawlStmtReturn (Cond _ (Prim _ (Bool _ x)) s1 s2) = do
   if x then
     crawlStmtReturn s1
