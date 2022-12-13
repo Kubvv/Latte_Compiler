@@ -3,6 +3,7 @@ module Generator where
 import Data.Maybe
 import Data.Monoid
 import Data.List as L
+import Data.Bifunctor as Bi
 import Control.Monad.Writer
 
 import SsaData as S
@@ -39,7 +40,7 @@ modifyMemoryOffset c1 c2 (VMem r mr (Just off) typ) =
 modifyMemoryOffset _ _ v = v
 
 movArgToReg :: (String, [AVal]) -> AStmt
-movArgToReg (s, vs) = 
+movArgToReg (s, vs) =
   MOV (fromJust $ getFirstRegister vs) (fromJust $ getFirstMemory vs)
 
 getLive :: Integer -> RegisterRange -> [String]
@@ -47,9 +48,9 @@ getLive i range =
   map (fromJust . getArrRangeRegister) singleLen
   where
     singleLen = filter (\l -> length l == 1) iInRange
-    iInRange = map (filterJustInRanges i) range 
+    iInRange = map (filterJustInRanges i) range
 
-getFreeOrDefaultRegister :: GeneratorData -> String -> Register -> Integer -> GeneratorMonad (AVal)
+getFreeOrDefaultRegister :: GeneratorData -> String -> Register -> Integer -> GeneratorMonad AVal
 getFreeOrDefaultRegister gd s r i =
   do
     case getGeneratorAvalFromStr s gd of
@@ -68,7 +69,7 @@ getFree i range =
     iInRange = filter (anyNothingInRanges i) range
 
 getStackChanges :: [AVal] -> ([AStmt], [AStmt])
-getStackChanges avs | (length avs) `mod` 2 == 0 = ([], [])
+getStackChanges avs | even (length avs) = ([], [])
 getStackChanges _ = ([SUB (VReg RSP) (A.VConst 8)], [ADD (VReg RSP) (A.VConst 8)])
 
 switchRRegisters :: [(Register, AVal)] -> Register -> Register -> [(Register, AVal)]
@@ -78,7 +79,7 @@ switchSRegisters :: [AVal] -> Register -> Register -> [AVal]
 switchSRegisters sargs old new = map (switchVRegister old new) sargs
 
 argumentPush :: AVal -> GeneratorMonad ()
-argumentPush (VReg r) = 
+argumentPush (VReg r) =
   do
     tell $ Endo ([PUSH (VReg (increase r))]<>)
 argumentPush av@(VMem _ _ _ (Just typ)) =
@@ -99,7 +100,7 @@ xor False True = True
 xor _ _ = False
 
 
-generate :: S.Program -> IO (A.Program)
+generate :: S.Program -> IO A.Program
 generate prog =
   do
     endoastmts <- execWriterT (generateProgram prog)
@@ -128,24 +129,23 @@ generateClass (Cls x mx off attr met) =
     tell $ Endo ([DD (A.VConst off)]<>)
     tell $ Endo ([DQ (VLab methodsName)]<>)
     tell $ Endo ([DD (A.VConst $ fromIntegral $ length refattr)]<>)
-    tell $ Endo ([DQ (refVal)]<>)
+    tell $ Endo ([DQ refVal]<>)
     tell $ Endo ([A.PutLab methodsName]<>)
-    tell $ Endo ((map (\x -> DQ (VLab x)) met)<>)
-    when (not $ null $ refattr) $ do
+    tell $ Endo (map (DQ . VLab) met<>)
+    unless (null refattr) $ do
       tell $ Endo ([A.PutLab refName]<>)
-      tell $ Endo ((map (\x -> DD (A.VConst x)) (map getAttributeOffset refattr))<>)
-    return ()
+      tell $ Endo (map ((DD . A.VConst) . getAttributeOffset) refattr<>)
       where
         refattr = filter isAttributeReferenceType attr
         parenName = fromMaybe "" mx
-        parenVal = if parenName == "" then 
-                    (A.VConst 0)
+        parenVal = if parenName == "" then
+                    A.VConst 0
                    else
-                    (VLab parenName)
+                    VLab parenName
         refVal = if null refattr then
-                  (A.VConst 0) 
+                  A.VConst 0
                  else
-                  (VLab refName)
+                  VLab refName
         methodsName = x ++ "_methods"
         refName = x ++ "_refs"
 
@@ -168,7 +168,7 @@ generateBlock x args stmts =
     generateBlockEpilog x (shouldUseR12, shouldUseR13)
       where
         livestmt = checkLiveness stmts
-        vm = generateArgs args 
+        vm = generateArgs args
         rstate = alloc vm args livestmt
 
 generateArgs :: [(Type, String)] -> ValMap
@@ -181,8 +181,8 @@ generatePreBlock x (RegState ranges vm stc) stmts =
     tell $ Endo ([A.PutLab x]<>)
     tell $ Endo ([PUSH (VReg RBP)]<>)
     tell $ Endo ([PUSH (VReg RBX)]<>)
-    let refAss = or (map isReferenceAssignment stmts)
-    let refExpr = or (map isReferenceExpr stmts)
+    let refAss = any isReferenceAssignment stmts
+    let refExpr = any isReferenceExpr stmts
     let shouldUseR12 = refAss || refExpr
     let shouldUseR13 = refAss --TODO better name?
     when shouldUseR12 $
@@ -190,18 +190,18 @@ generatePreBlock x (RegState ranges vm stc) stmts =
     when shouldUseR13 $
       tell $ Endo ([PUSH (VReg R13)]<>)
     tell $ Endo ([MOV (VReg RBP) (VReg RSP)]<>)
-    let rspOffsetCond = xor shouldUseR12 shouldUseR13 
+    let rspOffsetCond = xor shouldUseR12 shouldUseR13
     if rspOffsetCond && stc > 0 then
       tell $ Endo ([SUB (VReg RSP) (A.VConst (roundToDivider stc))]<>)
     else if stc > 0 then
-      tell $ Endo ([SUB (VReg RSP) (A.VConst (8 + (roundToDivider stc)))]<>)
-    else if not $ rspOffsetCond then
+      tell $ Endo ([SUB (VReg RSP) (A.VConst (8 + roundToDivider stc))]<>)
+    else if not rspOffsetCond then
       tell $ Endo ([SUB (VReg RSP) (A.VConst 8)]<>)
     else
       tell $ Endo ([]<>)
-    let modvm = map (\(s, vs) -> (s, (map (modifyMemoryOffset shouldUseR12 shouldUseR13) vs))) vm
+    let modvm = map (Bi.second (map (modifyMemoryOffset shouldUseR12 shouldUseR13))) vm
     let argsToRegister = filter (isValueCount 2) modvm
-    tell $ Endo ((map movArgToReg argsToRegister)<>)
+    tell $ Endo (map movArgToReg argsToRegister<>)
     return (shouldUseR12, shouldUseR13, modvm)
 
 generateBlockEpilog :: String -> (Bool, Bool) -> GeneratorMonad ()
@@ -227,11 +227,11 @@ generateStmt gd (i, Decl typ s e) =
         let anyReg = filter isRegisterValue x
         let dest = case anyReg of
                     [] -> head x
-                    (r:_) -> if s `elem` (getLive (i+1) (range (rstate gd))) then r else vr
+                    (r:_) -> if s `elem` getLive (i+1) (range (rstate gd)) then r else vr
         generateExpr gd e i typ dest
       Nothing ->
         generateExpr gd e i typ vr
-generateStmt gd (i, Ass typ (LVar x) e) = 
+generateStmt gd (i, Ass typ (LVar x) e) =
   do
     let vr = VReg (shrink RBX typ)
     let vm = vMap $ rstate gd
@@ -240,7 +240,7 @@ generateStmt gd (i, Ass typ (LVar x) e) =
         let anyReg = filter isRegisterValue v
         let dest = case anyReg of
                     [] -> head v
-                    (r:_) -> if x `elem` (getLive (i+1) (range (rstate gd))) then r else vr
+                    (r:_) -> if x `elem` getLive (i+1) (range (rstate gd)) then r else vr
         generateExpr gd e i typ dest
       Nothing ->
         generateExpr gd e i typ vr
@@ -260,14 +260,14 @@ generateStmt gd (i, Ass typ (LElem x off) e) =
     nullCheck r
     tell $ Endo ([MOV (VReg R13) (VMem r Nothing (Just 0x08) Nothing)]<>)
     tell $ Endo ([MOV (VMem R13 Nothing (Just off) Nothing) (VReg shrinked)]<>)
-generateStmt gd (i, Ret typ e) = 
+generateStmt gd (i, Ret typ e) =
   do
     generateExpr gd e i typ (VReg (shrink RAX typ))
     tell $ Endo ([JMP (VLab ("fend_" ++ funName gd))]<>)
-generateStmt gd (_, RetV) = 
+generateStmt gd (_, RetV) =
   do
     tell $ Endo ([JMP (VLab ("fend_" ++ funName gd))]<>)
-generateStmt _ (_, Jmp s) = 
+generateStmt _ (_, Jmp s) =
   do
     tell $ Endo ([JMP (VLab s)]<>)
 generateStmt gd (i, JmpCond op s v1 v2) =
@@ -283,7 +283,7 @@ generateStmt gd (i, JmpCond op s v1 v2) =
     where
       modv1 = generateValue gd v1
       modv2 = generateValue gd v2
-generateStmt _ (_, S.PutLab s) = 
+generateStmt _ (_, S.PutLab s) =
   do
     tell $ Endo ([A.PutLab s]<>)
 
@@ -301,10 +301,10 @@ generateJmpCond op s av1 av2 =
 
 
 generateExpr :: GeneratorData -> Expr -> Integer -> Type -> AVal -> GeneratorMonad ()
-generateExpr gd (Cast s v) i typ dest = 
+generateExpr gd (Cast s v) i typ dest =
   do
     generateCall gd (VLab "_cast") [v, S.VConst (CStr s)] i typ dest
-generateExpr gd (ArrAcs s id) i typ (VReg r) = 
+generateExpr gd (ArrAcs s id) i typ (VReg r) =
   do
     generateCall gd (VLab "_getarritemptr") [VVar s, id] i typ (VReg R12)
     tell $ Endo ([MOV (VReg R12) (VMem R12 Nothing Nothing Nothing)]<>)
@@ -314,7 +314,7 @@ generateExpr gd (ArrAcs s id) i typ dest =
     let shrReg = VReg (shrink RBX typ)
     tell $ Endo ([MOV shrReg (VMem R12 Nothing Nothing Nothing)]<>)
     tell $ Endo ([MOV dest shrReg]<>)
-generateExpr gd (FunApp s vs) i typ dest = 
+generateExpr gd (FunApp s vs) i typ dest =
   do
     if s `elem` defaultNonClassFunctions then
       generateCall gd (VLab ("_" ++ s)) vs i typ dest
@@ -344,10 +344,10 @@ generateExpr gd (Elem s id) i typ dest =
     tell $ Endo ([MOV (VReg R12) (VMem r2 Nothing (Just 8) Nothing)]<>)
     tell $ Endo ([MOV tmp (VMem R12 Nothing (Just i) Nothing)]<>)
     tell $ Endo ([MOV dest tmp]<>)
-generateExpr gd (NewObj s) i typ dest = 
+generateExpr gd (NewObj s) i typ dest =
   do
     generateCall gd (VLab "_new") [S.VConst (CStr s)] i typ dest
-generateExpr gd (NewString s) i typ dest = 
+generateExpr gd (NewString s) i typ dest =
   do
     generateCall gd (VLab "_new_string") [S.VConst (CStr s)] i typ dest
 generateExpr gd (NewArray TInt v) i typ dest =
@@ -360,15 +360,15 @@ generateExpr gd (NewArray TRef v) i typ dest =
   do
     generateCall gd (VLab "_new_obj_arr") [v] i typ dest
 generateExpr _ (Not (S.VConst (CByte x))) i typ (VReg r) =
-  do 
+  do
     tell $ Endo ([MOV (VReg (shrink r TByte)) (notConstant x)]<>)
 generateExpr _ (Not (S.VConst (CByte x))) i typ dest =
-  do 
+  do
     tell $ Endo ([MOV dest (notConstant x)]<>)
 generateExpr gd (Not (S.VVar x)) i typ dest =
   do
     let av = fromJust $ getGeneratorAvalFromStr x gd
-    when (not $ isRegisterValue av) $
+    unless (isRegisterValue av) $
       tell $ Endo ([MOV (VReg BL) av]<>)
     let r = getRegisterOrDefault av BL
     case dest of
@@ -380,23 +380,23 @@ generateExpr gd (Not (S.VVar x)) i typ dest =
       _ -> do
         tell $ Endo ([TEST (VReg r) (VReg r)]<>)
         tell $ Endo ([SETZ dest]<>)
-generateExpr gd (Ram Div v1 v2) i typ dest = 
+generateExpr gd (Ram Div v1 v2) i typ dest =
   do
     let modv1 = generateValue gd v1
     let modv2 = generateValue gd v2
     after <- generateDivide gd modv1 modv2 i
     tell $ Endo ([MOV (VReg EBX) (VReg EAX)]<>)
-    tell $ Endo ((after)<>)
+    tell $ Endo (after<>)
     tell $ Endo ([MOV dest (VReg EBX)]<>)
-generateExpr gd (Ram Mod v1 v2) i typ dest = 
+generateExpr gd (Ram Mod v1 v2) i typ dest =
   do
     let modv1 = generateValue gd v1
     let modv2 = generateValue gd v2
     after <- generateDivide gd modv1 modv2 i
     tell $ Endo ([MOV (VReg EBX) (VReg EDX)]<>)
-    tell $ Endo ((after)<>)
-    tell $ Endo ([MOV dest (VReg EBX)]<>) 
-generateExpr gd (Ram op v1 v2) i typ dest = 
+    tell $ Endo (after<>)
+    tell $ Endo ([MOV dest (VReg EBX)]<>)
+generateExpr gd (Ram op v1 v2) i typ dest =
   do
     let modv1 = generateValue gd v1
     let modv2 = generateValue gd v2
@@ -404,13 +404,13 @@ generateExpr gd (Ram op v1 v2) i typ dest =
     tell $ Endo ([MOV (VReg moddest) modv1]<>)
     tell $ Endo ([generateArth op (VReg moddest) modv2]<>)
     tell $ Endo ([MOV dest (VReg moddest)]<>)
-generateExpr _ (Value (S.VConst x)) i typ dest@(VReg r) = 
+generateExpr _ (Value (S.VConst x)) i typ dest@(VReg r) =
   do
     case x of
       CNull -> tell $ Endo ([XOR dest dest]<>)
       CInt c -> tell $ Endo ([MOV (VReg (shrink r TInt)) (A.VConst c)]<>)
       CByte c -> tell $ Endo ([MOV (VReg (shrink r TByte)) (A.VConst c)]<>)
-generateExpr _ (Value (S.VConst x)) i _ dest = 
+generateExpr _ (Value (S.VConst x)) i _ dest =
   do
     case x of
       CNull -> do
@@ -422,7 +422,7 @@ generateExpr _ (Value (S.VConst x)) i _ dest =
       CByte c -> do
         tell $ Endo ([MOV (VReg BL) (A.VConst c)]<>)
         tell $ Endo ([MOV dest (VReg BL)]<>)
-generateExpr gd (Value (S.VVar x)) i _ dest = 
+generateExpr gd (Value (S.VVar x)) i _ dest =
   do
     let av = fromJust $ getGeneratorAvalFromStr x gd
     if isRegisterValue av then
@@ -430,10 +430,10 @@ generateExpr gd (Value (S.VVar x)) i _ dest =
         VReg r2 -> do
           let r1 = fromJust $ getRegisterFromValue av
           tell $ Endo ([MOV (VReg (shrink r2 (getRegisterSize r1))) av]<>)
-        _ -> 
+        _ ->
           tell $ Endo ([MOV dest av]<>)
     else
-      case dest of 
+      case dest of
         VReg _ ->
           tell $ Endo ([MOV dest av]<>)
         _ -> do
@@ -442,11 +442,11 @@ generateExpr gd (Value (S.VVar x)) i _ dest =
           tell $ Endo ([MOV dest (VReg (shrink RBX typ))]<>)
 
 
-generateDivide :: GeneratorData -> AVal -> AVal -> Integer -> GeneratorMonad ([AStmt])
+generateDivide :: GeneratorData -> AVal -> AVal -> Integer -> GeneratorMonad [AStmt]
 generateDivide gd v1 v2 i =
   do
     after <- generatePreDivide (getFree i (range $ rstate gd))
-    let medx = getRegisterFromValue v2 
+    let medx = getRegisterFromValue v2
     when (medx == Just EDX) $
       tell $ Endo ([MOV (VReg EBX) (VReg EDX)]<>)
     tell $ Endo ([MOV (VReg EAX) v1]<>)
@@ -460,14 +460,14 @@ generateDivide gd v1 v2 i =
       tell $ Endo ([IDIV v2]<>)
     return after
 
-generatePreDivide :: [Register] -> GeneratorMonad ([AStmt])
+generatePreDivide :: [Register] -> GeneratorMonad [AStmt]
 generatePreDivide fReg =
   do
     let vTReg = map VReg (divideRegisters \\ fReg)
     let pushStmts = map PUSH vTReg
     let popStmts = map POP (L.reverse vTReg)
-    tell $ Endo ((pushStmts)<>)
-    return (popStmts)
+    tell $ Endo (pushStmts<>)
+    return popStmts
 
 
 generateCall :: GeneratorData -> AVal -> [Val] -> Integer -> Type -> AVal -> GeneratorMonad ()
@@ -476,34 +476,34 @@ generateCall gd f args line typ dest =
     let gdrange = range $ rstate gd
     after <- generatePreCall (getFree (line + 1) gdrange)
     let aargs = map (generateValue gd) args
-    generateCallArgs (getFree line gdrange) (zip (argumentRegisters) (take 6 aargs)) (L.reverse (drop 6 aargs))
+    generateCallArgs (getFree line gdrange) (zip argumentRegisters (take 6 aargs)) (L.reverse (drop 6 aargs))
     tell $ Endo ([CALL f]<>)
     tell $ Endo ([MOV (VReg RSP) (VReg RBX)]<>)
     tell $ Endo ([MOV (VReg RBX) (VReg RAX)]<>)
-    tell $ Endo ((after)<>)
+    tell $ Endo (after<>)
     if isRegisterValue dest then
       tell $ Endo ([MOV (VReg (increase (fromJust (getRegisterFromValue dest)))) (VReg RBX)]<>)
     else
       tell $ Endo ([MOV dest (VReg (shrink RBX typ))]<>)
 
-generatePreCall :: [Register] -> GeneratorMonad ([AStmt])
+generatePreCall :: [Register] -> GeneratorMonad [AStmt]
 generatePreCall fReg =
   do
     let vTReg = map VReg (modifiableRegisters \\ fReg)
     let (stackin, stackout) = getStackChanges vTReg
     let pushStmts = map PUSH vTReg
     let popStmts = map POP (L.reverse vTReg)
-    tell $ Endo ((stackin)<>)
-    tell $ Endo ((pushStmts)<>)
+    tell $ Endo (stackin<>)
+    tell $ Endo (pushStmts<>)
     return (popStmts ++ stackout)
 
 generateCallArgs :: [Register] -> [(Register, AVal)] -> [AVal] -> GeneratorMonad ()
-generateCallArgs _ [] [] = 
+generateCallArgs _ [] [] =
   do
     tell $ Endo ([MOV (VReg RBX) (VReg RSP)]<>)
-generateCallArgs fReg ((dest, (VReg src)):rargs) sargs | dest == increase src = 
+generateCallArgs fReg ((dest, VReg src):rargs) sargs | dest == increase src =
   generateCallArgs fReg rargs sargs
-generateCallArgs fReg ((dest, (VReg src)):rargs) sargs =
+generateCallArgs fReg ((dest, VReg src):rargs) sargs =
   if dest `elem` fReg then do
     tell $ Endo ([MOV (VReg (shrink dest (getRegisterSize src))) (VReg src)]<>)
     generateCallArgs fReg rargs sargs
@@ -526,10 +526,10 @@ generateCallArgs _ [] sargs =
     tell $ Endo ([MOV (VReg RBX) (VReg RSP)]<>)
     mapM_ argumentPush sargs
 
-  
+
 generateValue :: GeneratorData -> Val -> AVal
 generateValue _ (S.VConst (CInt i)) = A.VConst i
-generateValue _ (S.VConst (CByte i)) = A.VConst i 
+generateValue _ (S.VConst (CByte i)) = A.VConst i
 generateValue _ (S.VConst (CStr s)) = VLab s
 generateValue gd (S.VVar s) = fromJust $ getGeneratorAvalFromStr s gd
 
@@ -552,7 +552,7 @@ nullCheck :: Register -> GeneratorMonad ()
 nullCheck r =
   do
     tell $ Endo ([TEST (VReg r) (VReg r)]<>)
-    tell $ Endo ([JNZ (VLab ("$+7"))]<>) -- Skip one 4 byte instruction
+    tell $ Endo ([JNZ (VLab "$+7")]<>) -- Skip one 4 byte instruction
     tell $ Endo ([CALL (VLab "_null_err")]<>)
 
 isTempAndEqual :: AVal -> AVal -> Maybe AVal -> Bool
@@ -585,8 +585,8 @@ clearStmts (MOV x1 x2 : stmts)
 clearStmts (MOV x1 y1 : MOV y2 x2 : stmts)
   | x1 == x2 && y1 == y2 =
     clearStmts (MOV x1 y1 : stmts)
-clearStmts (MOV x1 y1 : MOV z1 x2 : stmts) 
-  | isTempAndEqual x1 x2 Nothing && (isRegisterValue y1 || isRegisterValue z1) = 
+clearStmts (MOV x1 y1 : MOV z1 x2 : stmts)
+  | isTempAndEqual x1 x2 Nothing && (isRegisterValue y1 || isRegisterValue z1) =
     clearStmts (MOV z1 y1 : stmts)
 clearStmts (JMP (VLab x1) : A.PutLab y1 : A.PutLab x2 : stmts)
   | x1 == x2 =
@@ -594,32 +594,32 @@ clearStmts (JMP (VLab x1) : A.PutLab y1 : A.PutLab x2 : stmts)
 clearStmts (JMP (VLab x1) : A.PutLab x2 : stmts)
   | x1 == x2 =
     clearStmts (A.PutLab x2 : stmts)
-clearStmts (MOV x1 y1 : ADD x2 z1 : MOV y2 x3 : stmts) 
+clearStmts (MOV x1 y1 : ADD x2 z1 : MOV y2 x3 : stmts)
   | isTempAndEqualArth x1 x2 x3 y1 y2 =
     clearStmts (ADD y1 z1 : stmts)
-clearStmts (MOV x1 y1 : SUB x2 z1 : MOV y2 x3 : stmts) 
+clearStmts (MOV x1 y1 : SUB x2 z1 : MOV y2 x3 : stmts)
   | isTempAndEqualArth x1 x2 x3 y1 y2 =
     clearStmts (SUB y1 z1 : stmts)
-clearStmts (MOV x1 y1 : IMUL x2 z1 : MOV y2 x3 : stmts) 
+clearStmts (MOV x1 y1 : IMUL x2 z1 : MOV y2 x3 : stmts)
   | isTempAndEqualArth x1 x2 x3 y1 y2 =
     clearStmts (IMUL y1 z1 : stmts)
-clearStmts (MOV x1 y1 : ADD x2 z1 : MOV z2 x3 : stmts) 
+clearStmts (MOV x1 y1 : ADD x2 z1 : MOV z2 x3 : stmts)
   | isTempAndEqualArth x1 x2 x3 z1 z2 =
     clearStmts (ADD z1 y1 : stmts)
-clearStmts (MOV x1 y1 : IMUL x2 z1 : MOV z2 x3 : stmts) 
+clearStmts (MOV x1 y1 : IMUL x2 z1 : MOV z2 x3 : stmts)
   | isTempAndEqualArth x1 x2 x3 z1 z2 =
     clearStmts (IMUL z1 y1 : stmts)
-clearStmts (MOV x1 y1 : ADD x2 z1 : MOV w1 x3 : stmts) 
+clearStmts (MOV x1 y1 : ADD x2 z1 : MOV w1 x3 : stmts)
   | isTempAndNotEqualArth x1 x2 x3 w1 z1 =
     clearStmts (MOV w1 y1 : ADD w1 z1 : stmts)
-clearStmts (MOV x1 y1 : SUB x2 z1 : MOV w1 x3 : stmts) 
+clearStmts (MOV x1 y1 : SUB x2 z1 : MOV w1 x3 : stmts)
   | isTempAndNotEqualArth x1 x2 x3 w1 z1 =
     clearStmts (MOV w1 y1 : SUB w1 z1 : stmts)
-clearStmts (MOV x1 y1 : IMUL x2 z1 : MOV w1 x3 : stmts) 
+clearStmts (MOV x1 y1 : IMUL x2 z1 : MOV w1 x3 : stmts)
   | isTempAndNotEqualArth x1 x2 x3 w1 z1 =
     clearStmts (MOV w1 y1 : IMUL w1 z1 : stmts)
-clearStmts (MOV x1 y1 : CMP x2 z1 : stmts) 
-  | isTempAndEqual x1 x2 Nothing = 
+clearStmts (MOV x1 y1 : CMP x2 z1 : stmts)
+  | isTempAndEqual x1 x2 Nothing =
     clearStmts (CMP y1 z1 : stmts)
 clearStmts (stmt:stmts) = stmt : clearStmts stmts
 
@@ -643,4 +643,4 @@ clearStackStmts (ADD x1 y1 : SUB x2 y2 : stmts)
 clearStackStmts (SUB x1 (A.VConst i1) : SUB x2 (A.VConst i2) : stmts)
   | isStackAndEqual x1 x2 =
     clearStackStmts (SUB x1 (A.VConst (i1 + i2)):stmts)
-clearStackStmts (stmt:stmts) = stmt : clearStackStmts stmts 
+clearStackStmts (stmt:stmts) = stmt : clearStackStmts stmts

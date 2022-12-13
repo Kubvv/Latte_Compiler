@@ -14,7 +14,7 @@ import LivenessCheckData
 -- as all labels have been correctly generated during ssa translation
 findLabelLine :: [(Integer, Stmt)] -> String -> Maybe Integer
 findLabelLine [] _ = Nothing
-findLabelLine ((line, PutLab x):stmts) s 
+findLabelLine ((line, PutLab x):stmts) s
   | x == s = Just line
   | otherwise = findLabelLine stmts s
 findLabelLine (stmt:stmts) s = findLabelLine stmts s
@@ -29,9 +29,9 @@ linkProgramFlow prog (line, stmt@(Jmp s)) =
 linkProgramFlow prog (line, stmt@(JmpCond _ s _ _)) =
   (line, stmt, [line + 1, sline])
     where sline = fromJust $ findLabelLine prog s
-linkProgramFlow _ (line, stmt@(Ret _ _)) =
+linkProgramFlow _ (line, stmt@Ret{}) =
   (line, stmt, [])
-linkProgramFlow _ (line, stmt@(RetV)) =
+linkProgramFlow _ (line, stmt@RetV) =
   (line, stmt, [])
 linkProgramFlow _ (line, stmt) =
   (line, stmt, [line + 1])
@@ -50,7 +50,7 @@ checkLiveness :: [Stmt] -> [LiveStmt]
 checkLiveness stmts =
   P.map cleanStmtFlow (buildBefAftSets prepStmts)
     where
-      prepStmts = P.map (addLivenessSets . (linkProgramFlow lineStmts)) lineStmts
+      prepStmts = P.map (addLivenessSets . linkProgramFlow lineStmts) lineStmts
       lineStmts = zip [1..] stmts -- Adds line numbers to all statements
 
 -- Iteratively adjusts the before and after sets until it reaches a fixed point
@@ -92,7 +92,7 @@ varRangesStmt (stmt, before, _) =
   do
     store <- get
     let l = line store
-    modify $ incrLStateCounter
+    modify incrLStateCounter
     let modVars = P.foldl (analizeVarRange l) (varRanges store) before
     modify $ putVarRanges modVars
 

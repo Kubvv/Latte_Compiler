@@ -42,7 +42,7 @@ getLivenessStmt (s, _, _) = s
 
 -- Check if a given string matches a variable name in declaration statement
 isLivenessDeclName :: String -> LiveStmt -> Bool
-isLivenessDeclName s1 ((Decl _ s2 _), _, _) | s1 == s2 = True
+isLivenessDeclName s1 (Decl _ s2 _, _, _) | s1 == s2 = True
 isLivenessDeclName _ _ = False
 
 -- Var range describes a singular liveness range of a single variable

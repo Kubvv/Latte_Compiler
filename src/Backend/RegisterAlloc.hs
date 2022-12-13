@@ -19,7 +19,7 @@ getTypeFromLiveness liveness args s =
       where found = P.filter (isLivenessDeclName s) liveness
 
 modifyRegStateRange :: Register -> [VarRange] -> RegisterRange -> RegisterRange
-modifyRegStateRange r1 xrange ((r2, range2):rgs) 
+modifyRegStateRange r1 xrange ((r2, range2):rgs)
   | r1 == r2 = (r1, findRanges xrange range2) : rgs
   | otherwise = (r2, range2) : modifyRegStateRange r1 xrange rgs
 
@@ -30,8 +30,8 @@ findSingularRange :: [Range] -> VarRange -> [Range]
 findSingularRange ((Nothing, from1, to1):rgs) (x, from2, to2) | from1 <= from2 && to1 >= to2 =
   concat [pre, [(Just x, from2, to2)], post, rgs]
     where
-      pre = if from1 < from2 then [(Nothing, from1, from2 - 1)] else []
-      post = if to1 > to2 then [(Nothing, to2 + 1, to1)] else []
+      pre = [(Nothing, from1, from2 - 1) | from1 < from2]
+      post = [(Nothing, to2 + 1, to1) | to1 > to2]
 findSingularRange (rg:rgs) x = rg : findSingularRange rgs x
 
 putToRegister :: [LiveStmt] -> [Arg] -> String -> Register -> [VarRange] -> RegisterState -> RegisterState
@@ -82,7 +82,7 @@ putNewRanges liveness args rstate (x, fromto) =
 
 fillIn :: [LiveStmt] -> [Arg] -> String -> RegisterState -> RegisterState
 fillIn liveness args x (RegState ranges vm stc) =
-  RegState ranges (modifyRegStateMap x ((VMem RBP Nothing (Just (-stc-size))) (Just typ)) vm) (stc + size)
+  RegState ranges (modifyRegStateMap x (VMem RBP Nothing (Just (-stc-size)) (Just typ)) vm) (stc + size)
     where
       typ = getTypeFromLiveness liveness args x
       size = getTypeSize typ
@@ -91,10 +91,10 @@ mergedToVarRange :: String -> (Integer, Integer) -> VarRange
 mergedToVarRange x (from, to) = (x, from, to)
 
 alloc :: ValMap -> [Arg] -> [LiveStmt] -> RegisterState
-alloc currvmap args liveness = 
+alloc currvmap args liveness =
   shiftRegStateStack res 8
     where
       varRan = createVarRanges liveness
-      inits = RegState (P.map (initialRegisterRange (length liveness)) modifiableRegisters) [] 8 
+      inits = RegState (P.map (initialRegisterRange (length liveness)) modifiableRegisters) [] 8
       sargs = P.foldl (putCurrRanges liveness args varRan) inits currvmap
       res = P.foldl (putNewRanges liveness args) sargs (mergeSameVars (P.filter (isNotVarRangeNames (getArgNames args)) varRan))

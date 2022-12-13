@@ -7,7 +7,7 @@ import SsaData as S
  - it's a basically a full working assembler program (not counting the pre defined functions)-}
 
 -- Program changes to a list of assebler statements
-data Program = Prog [AStmt]
+newtype Program = Prog [AStmt]
   deriving (Eq, Show)
 
 -- AStmt consists of all x86_64 statements that are used in the assembly generator
@@ -21,7 +21,7 @@ data AStmt =
   | SUB AVal AVal
   | IMUL AVal AVal
   | IDIV AVal
-  | CDQ 
+  | CDQ
   | CMP AVal AVal
   | TEST AVal AVal
   | AND AVal AVal
@@ -53,13 +53,13 @@ data AStmt =
 -- Each register has a 8bit, 32bit and 64bit versions for storing bool, ints
 -- and addresses respectively. Only RBP and RSP don't have this variants since
 -- they store a frame and stack address
-data Register = 
-    RAX 
-  | EAX 
+data Register =
+    RAX
+  | EAX
   | AL
-  | RBX 
-  | EBX 
-  | BL 
+  | RBX
+  | EBX
+  | BL
   | RCX
   | ECX
   | CL
@@ -67,34 +67,34 @@ data Register =
   | EDX
   | DL
   | RDI
-  | EDI 
+  | EDI
   | DIL
-  | RSI 
-  | ESI 
-  | SIL 
-  | R8  
-  | R8D 
+  | RSI
+  | ESI
+  | SIL
+  | R8
+  | R8D
   | R8B
-  | R9  
-  | R9D 
-  | R9B 
-  | R10 
-  | R10D 
-  | R10B 
-  | R11 
-  | R11D 
-  | R11B 
-  | R12 
-  | R12D 
-  | R12B 
-  | R13 
-  | R13D 
-  | R13B 
-  | R14 
-  | R14D 
-  | R14B 
-  | R15 
-  | R15D 
+  | R9
+  | R9D
+  | R9B
+  | R10
+  | R10D
+  | R10B
+  | R11
+  | R11D
+  | R11B
+  | R12
+  | R12D
+  | R12B
+  | R13
+  | R13D
+  | R13B
+  | R14
+  | R14D
+  | R14B
+  | R15
+  | R15D
   | R15B
   | RBP
   | RSP
@@ -112,8 +112,8 @@ divideRegisters = [RAX, RDX]
 -- Switch an old register value to a new register value if the old register matches the 
 -- register in the given pair while preserving a size of the original register, otherwise do nothing
 switchRegister :: Register -> Register -> (Register, AVal) -> (Register, AVal)
-switchRegister old new (r, (VReg r2))  | increase r2 == increase old = (r, VReg (shrink new (getRegisterSize r2)))
-switchRegister _ _ rav = rav 
+switchRegister old new (r, VReg r2)  | increase r2 == increase old = (r, VReg (shrink new (getRegisterSize r2)))
+switchRegister _ _ rav = rav
 
 -- Switch an old register value to a new register value if the old register matches the 
 -- register in the given value while preserving a size of the original register, otherwise do nothing
@@ -235,7 +235,7 @@ getRegisterSize x = TRef
 
 
 -- AVal describes every possible value that may appear inside an assembler program
-data AVal = 
+data AVal =
     VConst Integer -- describes a constant integer value 
   | VReg Register -- decribes a value that is stored in a register
     -- VMem describes a memory address. It consists of a register that holds the basic address, maybe
@@ -251,7 +251,7 @@ instance Show AVal where
   show (VMem r mri mi _) = concat ["[", show r, ri, i, "]"]
     where
       ri = case mri of
-        Just (r2, i1) -> concat [" + ", show r ++ "*" ++ show i1]
+        Just (r2, i1) -> concat [" + ", show r, "*", show i1]
         Nothing -> ""
       i = case mi of
         Just 0 -> ""
@@ -261,7 +261,7 @@ instance Show AVal where
   show (VLab s) = s
 
 -- Checks if a given value is a register
-isRegisterValue :: AVal -> Bool 
+isRegisterValue :: AVal -> Bool
 isRegisterValue (VReg _) = True
 isRegisterValue _ = False
 
@@ -271,8 +271,8 @@ isConstantValue (Assembler.VConst _) = True
 isConstantValue _ = False
 
 -- Checks if a given value is a memory address
-isMemoryValue :: AVal -> Bool 
-isMemoryValue (VMem _ _ _ _) = True
+isMemoryValue :: AVal -> Bool
+isMemoryValue VMem {} = True
 isMemoryValue _ = False
 
 -- Checks if a given value is a RSP register
@@ -287,7 +287,7 @@ isTemporaryRegister _ = False
 
 -- Swap the integer value representing a bool constant from a 0 to VConst 1 and vice versa
 notConstant :: Integer -> AVal
-notConstant x 
+notConstant x
   | x == 0 = Assembler.VConst 1
   | x == 1 = Assembler.VConst 0
 

@@ -36,12 +36,12 @@ isValueCount count (_,av) = length av == count
 
 getFirstRegister :: [AVal] -> Maybe AVal
 getFirstRegister [] = Nothing
-getFirstRegister (r@(VReg {}):avs) = Just r
+getFirstRegister (r@VReg {}:avs) = Just r
 getFirstRegister (_:avs) = getFirstRegister avs
 
 getFirstMemory :: [AVal] -> Maybe AVal
 getFirstMemory [] = Nothing
-getFirstMemory (r@(VMem {}):avs) = Just r
+getFirstMemory (r@VMem {}:avs) = Just r
 getFirstMemory (_:avs) = getFirstMemory avs
 
 type Arg = (S.Type, String)
