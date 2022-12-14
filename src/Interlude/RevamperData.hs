@@ -6,7 +6,7 @@ import Prelude as P
 
 import Control.Monad.State
 
-import SsaData
+import QuadruplesData
 
 newtype PropStore = PStore {
   valMap :: Map String Val

@@ -5,7 +5,7 @@ import Data.Maybe
 import Control.Monad.State
 
 import RevamperData
-import SsaData
+import QuadruplesData
 
 
 -- checkWrongSub is a special function that detects a situation when we want to declare or assign to

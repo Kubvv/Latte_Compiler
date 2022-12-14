@@ -1,4 +1,4 @@
-module Ssa where
+module Quadruples where
 
 import Data.Maybe
 import Data.Functor
@@ -10,19 +10,19 @@ import Prelude as P
 import Control.Monad.State
 import Control.Monad.Writer
 
-import SsaData as S
+import QuadruplesData as Q
 import Ast as A
 import TypeCheckData as T
 import Position
 
-{- Ssa primary job is to translate the ast data structure (defined in frontend)
- - into a ssa form (defined in SsaData). More info about the Ssa structure and
- - why i'm doing it can be found in SsaData main comment -}
+{- Quadruples primary job is to translate the ast data structure (defined in frontend)
+ - into a quadruple form (defined in QuadruplesData). More info about the Quadruples structure and
+ - why i'm doing it can be found in QuadruplesData main comment -}
 
 -- Divides the elements of a class into two lists of attributes and methods
--- In order for types to match with the ssa types, we add an default offset of 0 to
+-- In order for types to match with the quadruple types, we add an default offset of 0 to
 -- attributes and cut the methods to only their names
-divideElems :: [T.Element] -> [(String, S.Type, Int)] -> [String] -> ([(String, S.Type, Int)], [String])
+divideElems :: [T.Element] -> [(String, Q.Type, Int)] -> [String] -> ([(String, Q.Type, Int)], [String])
 divideElems [] accAtr accMet = (accAtr, accMet)
 divideElems (Attribute _ (Ident x) typ : es) accAtr accMet = divideElems es ((x, translateType typ, 0) : accAtr) accMet
 divideElems (Method _ _ (Ident x) _ : es) accAtr accMet = divideElems es accAtr (x : accMet)
@@ -30,15 +30,15 @@ divideElems (Method _ _ (Ident x) _ : es) accAtr accMet = divideElems es accAtr 
 -- Creates class offset size based on attributes of a given class
 --   Offset is determined by the offset of first argument and its type
 --   (Each attribute was given a gradual offset increase earlier)
-createOffsetSize :: [(String, S.Type, Integer)] -> Integer
+createOffsetSize :: [(String, Q.Type, Integer)] -> Integer
 createOffsetSize attrs =
   case attrs of
     [] -> 0
     ((name, typ, off):_) ->
       case typ of
-        S.TByte -> off + 0x01
-        S.TInt -> off + 0x04
-        S.TRef -> off + 0x08
+        Q.TByte -> off + 0x01
+        Q.TInt -> off + 0x04
+        Q.TRef -> off + 0x08
 
 -- Rename class methods (curr) so that they have a class name prefix.
 -- Since the original class can also see the methods of its parent without
@@ -67,16 +67,16 @@ removeClassPrefix x =
 
 -- Finds class by name in given lists of classes, returns nothing
 -- if the class isn't present 
-findClass :: String -> [S.Class] -> Maybe S.Class
+findClass :: String -> [Q.Class] -> Maybe Q.Class
 findClass _ [] = Nothing
 findClass name (c:cs) =
-  if S.getClassName c /= name then
+  if Q.getClassName c /= name then
     findClass name cs
   else
     Just c
 
 -- Finds an attribute by its name in a given list of attributes 
-findAttribute :: String -> [(String, S.Type, Integer)] -> Maybe (String, S.Type, Integer)
+findAttribute :: String -> [(String, Q.Type, Integer)] -> Maybe (String, Q.Type, Integer)
 findAttribute _ [] = Nothing
 findAttribute name (a:as) =
   if getAttributeName a /= name then
@@ -118,7 +118,7 @@ getWhileLabels =
 
 -- Gets an attribute by its name (first String) in the class represented
 -- by a second argument. Class is taken from the store's class list 
-getAttribute :: String -> String -> BuildMonad (String, S.Type, Integer)
+getAttribute :: String -> String -> BuildMonad (String, Q.Type, Integer)
 getAttribute x c =
   do
     store <- get
@@ -128,11 +128,11 @@ getAttribute x c =
     return resattr
 
 -- Finds a function given by its name in the store's function list
-findFunction :: String -> BuildMonad S.Function
+findFunction :: String -> BuildMonad Q.Function
 findFunction s =
   do
     store <- get
-    let funcs = S.funs store
+    let funcs = Q.funs store
     let f = fromJust $ getFunction s funcs
     return f
 
@@ -161,25 +161,25 @@ findMethodInClass x (m:ms) i =
   else
     findMethodInClass x ms (i + 1)
 
--- Translates the whole ast program into a linearized ssa program
-interTranslate :: A.Program -> [T.Class] -> IO S.Program
-interTranslate prog cs = evalStateT (translateProgram prog cs) S.emptyStore
+-- Translates the whole ast program into a linearized quadruple program
+interTranslate :: A.Program -> [T.Class] -> IO Q.Program
+interTranslate prog cs = evalStateT (translateProgram prog cs) Q.emptyStore
 
 -- Translate the program by translating classes and functions, then
 -- add all mapped const strings that were encountered during translation
-translateProgram :: A.Program -> [T.Class] -> TranslateMonad S.Program
+translateProgram :: A.Program -> [T.Class] -> TranslateMonad Q.Program
 translateProgram (A.Program _ defs) cs =
   do
     classes <- getClasses cs
     functions <- getFunctions defs
     store <- get
     let strings = P.map (\(str, lab) -> (lab, str)) (M.toList (strMap store))
-    return (S.Prog classes functions strings)
+    return (Q.Prog classes functions strings)
 
 
 -- Gets all functions from the ast defs and translates them to 
--- ssa functions data type 
-getFunctions :: [A.Def] -> TranslateMonad [S.Function]
+-- quadruple functions data type 
+getFunctions :: [A.Def] -> TranslateMonad [Q.Function]
 getFunctions defs =
   do
     -- This first call is for creating function signatures in the store's function list
@@ -191,9 +191,9 @@ getFunctions defs =
     mapM_ translateDef defs
     store <- get
     -- Remove predefined functions as their implementation is in the Library
-    return (S.funs store L.\\ S.defaultFunctions)
+    return (Q.funs store L.\\ Q.defaultFunctions)
 
--- Translates program definitions to ssa functions. If definition
+-- Translates program definitions to quadruples functions. If definition
 -- is a function definition, perform the translation if the class is
 -- present in the store, otherwise put a signature to the store.
 -- If the definition is the class, translate all of its elements
@@ -201,11 +201,11 @@ translateDef :: A.Def -> TranslateMonad ()
 translateDef (A.FnDef _ typ (Ident x) args b) =
   do
     store <- get
-    let funcs = S.funs store
+    let funcs = Q.funs store
     if x `elem` P.map getFunctionName funcs then
       translateFunction x args b
     else
-      put $ putFunction (S.Fun x (translateType typ) [] []) store
+      put $ putFunction (Q.Fun x (translateType typ) [] []) store
 translateDef (A.ClsDef _ (Ident x) _ es) =
   do
     mapM_ (translateElement x) es
@@ -219,24 +219,24 @@ translateElement :: String -> A.ClsDef -> TranslateMonad ()
 translateElement s (A.MetDef _ typ (Ident x) args b) =
   do
     store <- get
-    let funcs = S.funs store
+    let funcs = Q.funs store
     let modx = "_" ++ s ++ "_" ++ x
     if modx `elem` P.map getFunctionName funcs then
       translateFunction modx (A.Arg Default (A.TClass Default (Ident s)) (Ident "self") : args) b
     else
-      put $ putFunction (S.Fun modx (translateType typ) [] []) store
+      put $ putFunction (Q.Fun modx (translateType typ) [] []) store
 translateElement _ (A.AtrDef _ typ (Ident x)) = return ()
 
--- Creates the list of ssa classes by first translating an
+-- Creates the list of quadruple classes by first translating an
 -- existing list of ast classes and then by returning the classes
 -- that were saved in the store
-getClasses :: [T.Class] -> TranslateMonad [S.Class]
+getClasses :: [T.Class] -> TranslateMonad [Q.Class]
 getClasses cs =
   do
     transCls <- mapM_ (translateClass cs) cs
     gets cls
 
--- Translates a single ast class into the ssa class data structure
+-- Translates a single ast class into the quadruple class data structure
 -- NoParent: divide the class elements into attributes and methods,
 --    add offsets to attributes and modify the method names so that they
 --    contain the class name prefix, then modify the name of the class
@@ -247,14 +247,14 @@ getClasses cs =
 --    (taking into account the attributes of the parent class), then modify the
 --    method names and add the not overriden methods of parent class, modify 
 --    the class and parent name and save the result to the store
-translateClass :: [T.Class] -> T.Class -> TranslateMonad S.Class
+translateClass :: [T.Class] -> T.Class -> TranslateMonad Q.Class
 translateClass _ (Class _ (Ident x) Nothing es) =
   do
     store <- get
     let (attr, met) = divideElems es [] []
     let modAttr = P.foldl (\attr (name, typ, _) -> (name, typ, createOffsetSize attr):attr) [] attr
     let modMet = renameMethods [] met x
-    let newClass = S.Cls ("_class_" ++ x) Nothing (createOffsetSize modAttr) modAttr modMet
+    let newClass = Q.Cls ("_class_" ++ x) Nothing (createOffsetSize modAttr) modAttr modMet
     put $ putClass newClass store
     return newClass
 translateClass cs (Class _ (Ident x) (Just (Ident px)) es) =
@@ -263,17 +263,17 @@ translateClass cs (Class _ (Ident x) (Just (Ident px)) es) =
     let clss = cls store
     let (attr, met) = divideElems es [] []
     (pattr, pmet) <- case findClass px clss of
-      Just (S.Cls _ _ _ attr met) -> return (attr, met)
+      Just (Q.Cls _ _ _ attr met) -> return (attr, met)
       Nothing -> do
-        (S.Cls _ _ _ attr met) <- translateClass cs (classFromName px cs)
+        (Q.Cls _ _ _ attr met) <- translateClass cs (classFromName px cs)
         return (attr, met)
     let modAttr = P.foldl (\attr (name, typ, _) -> (name, typ, createOffsetSize attr):attr) pattr attr
     let modMet = renameMethods pmet met x
-    let newClass = S.Cls ("_class_" ++ x) (Just ("_class_" ++ px)) (createOffsetSize modAttr) modAttr modMet
+    let newClass = Q.Cls ("_class_" ++ x) (Just ("_class_" ++ px)) (createOffsetSize modAttr) modAttr modMet
     put $ putClass newClass store
     return newClass
 
--- Translates function arguments and its statements to ssa form
+-- Translates function arguments and its statements to quadruple form
 -- After translation the reulting arguments and statements are saved
 -- by modyfing the function in the store's function list
 translateFunction :: String -> [A.Arg] -> A.Block -> TranslateMonad ()
@@ -283,13 +283,13 @@ translateFunction x args b =
     endomodstmts <- execWriterT (translateBlock b)
     let modstmts = appEndo endomodstmts []
     store <- get
-    let funcs = S.funs store
+    let funcs = Q.funs store
     let modfuns = modifyFunction funcs x modargs modstmts
     put $ putFunctions modfuns store
 
--- Translates the argument type and creates a new ssa varirable for
+-- Translates the argument type and creates a new quadruple varirable for
 -- each argument in the list, returns the modified list
-translateArgs :: [A.Arg] -> TranslateMonad [(S.Type, String)]
+translateArgs :: [A.Arg] -> TranslateMonad [(Q.Type, String)]
 translateArgs [] = return []
 translateArgs (A.Arg _ typ (Ident x):as) =
   do
@@ -298,22 +298,22 @@ translateArgs (A.Arg _ typ (Ident x):as) =
     modargs <- translateArgs as
     return ((modtyp, modx):modargs)
 
--- Creates an unique ssa variable using a counter from the store
+-- Creates an unique quadruple variable using a counter from the store
 -- Updates the store counter, typeMap and varMap using the variable type
--- old name and new name, returns the unique ssa variable
-translateItemName :: String -> S.Type -> TranslateMonad String
+-- old name and new name, returns the unique quadruple variable
+translateItemName :: String -> Q.Type -> TranslateMonad String
 translateItemName x typ =
   do
     store <- get
     let cnt = show $ counter store
-    let ssaVar = "t_" ++ cnt
+    let quadVar = "t_" ++ cnt
     modify incrCounter
-    modify $ putType ssaVar typ
-    modify $ putVar x ssaVar
-    return ssaVar
+    modify $ putType quadVar typ
+    modify $ putVar x quadVar
+    return quadVar
 
--- Translates ast decleartions into ssa declarations by creating
--- a new ssa varirable name and assigning the corresponding value
+-- Translates ast decleartions into quadruple declarations by creating
+-- a new quadruple variable name and assigning the corresponding value
 -- NoInit: Since we initialized all primitive no init declarations
 --   with a default value, here NoInit is reserved for declaring classes
 --   with no value, that means we can assign null to them
@@ -324,13 +324,13 @@ translateDecl (typ, NoInit _ (Ident x)) =
   do
     let modtyp = translateType typ
     modx <- lift $ translateItemName x modtyp
-    tell $ Endo ([S.Decl modtyp modx (S.Value (S.VConst S.CNull))]<>)
+    tell $ Endo ([Q.Decl modtyp modx (Q.Value (Q.VConst Q.CNull))]<>)
 translateDecl (typ, Init _ (Ident x) e) =
   do
     estr <- translateExpr e
     let modtyp = translateType typ
     modx <- lift $ translateItemName x modtyp
-    tell $ Endo ([S.Decl modtyp modx (S.Value (S.VVar estr))]<>)
+    tell $ Endo ([Q.Decl modtyp modx (Q.Value (Q.VVar estr))]<>)
 
 -- Translates a given block by mapping its statements
 translateBlock :: A.Block -> BuildMonad ()
@@ -338,17 +338,17 @@ translateBlock (A.Block _ stmts) =
   do
     mapM_ translateStmt stmts
 
--- Translates ast statements into ssa statements using writerT monad
+-- Translates ast statements into quadruple statements using writerT monad
 -- Empty: pass
 -- BlockS: go to translateBlock
 -- Decl: map the translation of declarations
 -- Ass (Lval = Var): translate the given expression and look in store's varMap for the current 
 --    name of left value 'x', then assign the found var to new var from resulting expression
 -- Ass (Lval = Elem): calculate expressions and look for the attribute name in the class
---    Combine the calculated expression ssa vars and attribute info into a matching element assignment 
+--    Combine the calculated expression quadruple vars and attribute info into a matching element assignment 
 -- Ass (Lval = ArrAcs): calculate the expressions, look for the type of resulting rval expression
 --    Combine all calculations into a matching assignment to array's position 
--- Ret: calulcate the expression and create a return statement with returned ssa var
+-- Ret: calulcate the expression and create a return statement with returned quadruple var
 -- RetV: just create a return void statement
 -- Cond: Cond uses special labels (prefixed with _c): _cif, _celse, _cendif
 --    First the condition is translated, then labels and statements are alternatively
@@ -372,13 +372,13 @@ translateStmt (A.Ass _ (A.Var _ (Ident x)) e) =
     store <- get
     let modx = fromJust $ getName x store
     let modtyp = fromJust $ getType modx store
-    tell $ Endo ([S.Ass modtyp (LVar modx) (S.Value (VVar estr))]<>)
+    tell $ Endo ([Q.Ass modtyp (LVar modx) (Q.Value (VVar estr))]<>)
 translateStmt (A.Ass _ (A.Elem _ e1 (Ident x) (Just cname)) e2) =
   do
     estr1 <- translateExpr e1
     estr2 <- translateExpr e2
     attr <- getAttribute x cname
-    tell $ Endo ([S.Ass (getAttributeType attr) (LElem estr1 (getAttributeOffset attr)) (S.Value (VVar estr2))]<>)
+    tell $ Endo ([Q.Ass (getAttributeType attr) (LElem estr1 (getAttributeOffset attr)) (Q.Value (VVar estr2))]<>)
 translateStmt (A.Ass _ (A.ArrAcs _ e1 e2 _) e3) =
   do
     estr1 <- translateExpr e1
@@ -386,34 +386,34 @@ translateStmt (A.Ass _ (A.ArrAcs _ e1 e2 _) e3) =
     estr3 <- translateExpr e3
     store <- get
     let modtyp = fromJust $ getType estr3 store
-    tell $ Endo ([S.Ass modtyp (LArr estr1 (VVar estr2)) (S.Value (VVar estr3))]<>)
+    tell $ Endo ([Q.Ass modtyp (LArr estr1 (VVar estr2)) (Q.Value (VVar estr3))]<>)
 translateStmt (A.Ret _ e) =
   do
     estr <- translateExpr e
     store <- get
-    tell $ Endo ([S.Ret (fromJust $ getType estr store) (S.Value (S.VVar estr))]<>)
+    tell $ Endo ([Q.Ret (fromJust $ getType estr store) (Q.Value (Q.VVar estr))]<>)
 translateStmt (A.RetV _) =
   do
-    tell $ Endo ([S.RetV]<>)
+    tell $ Endo ([Q.RetV]<>)
 translateStmt (Cond _ e s1 s2) =
   do
     (l1, l2, l3) <- getIfLabels
     translateCond False e l1 l2
-    tell $ Endo ([S.PutLab l1]<>)
+    tell $ Endo ([Q.PutLab l1]<>)
     translateStmt s1
-    tell $ Endo ([S.Jmp l3]<>)
-    tell $ Endo ([S.PutLab l2]<>)
+    tell $ Endo ([Q.Jmp l3]<>)
+    tell $ Endo ([Q.PutLab l2]<>)
     translateStmt s2
-    tell $ Endo ([S.PutLab l3]<>)
+    tell $ Endo ([Q.PutLab l3]<>)
 translateStmt (While _ e s) =
   do
     (l1, l2, l3) <- getWhileLabels
-    tell $ Endo ([S.Jmp l2]<>)
-    tell $ Endo ([S.PutLab l1]<>)
+    tell $ Endo ([Q.Jmp l2]<>)
+    tell $ Endo ([Q.PutLab l1]<>)
     translateStmt s
-    tell $ Endo ([S.PutLab l2]<>)
+    tell $ Endo ([Q.PutLab l2]<>)
     translateCond True e l1 l3
-    tell $ Endo ([S.PutLab l3]<>)
+    tell $ Endo ([Q.PutLab l3]<>)
 translateStmt (ExprS _ e) =
   do
     estr <- translateExpr e
@@ -430,7 +430,7 @@ translateStmt (ExprS _ e) =
 --   the right expression normally
 -- If expression is an or, translate the left condition with a true bool (so it jumps when if it's true), replacing l2 with
 --   a special unique label that points at the evaluation of the right value, then translate the right value
--- If nothing applies, just do a regular expression evaluation and ssa var extraction, and then create an condition
+-- If nothing applies, just do a regular expression evaluation and quadruple var extraction, and then create an condition
 --   of being equal or not equal to 0 according to the bool value
 translateCond :: Bool -> A.Expr -> String -> String -> BuildMonad ()
 translateCond b (A.NotNeg _ (A.Not _) e) l1 l2 =
@@ -439,12 +439,12 @@ translateCond True (A.Ram _ op e1 e2) l1 _ | isRelOperator op =
   do
     estr1 <- translateExpr e1
     estr2 <- translateExpr e2
-    tell $ Endo ([S.JmpCond (translateRelOp op) l1 (S.VVar estr1) (S.VVar estr2)]<>)
+    tell $ Endo ([Q.JmpCond (translateRelOp op) l1 (Q.VVar estr1) (Q.VVar estr2)]<>)
 translateCond False (A.Ram _ op e1 e2) _ l2 | isRelOperator op =
   do
     estr1 <- translateExpr e1
     estr2 <- translateExpr e2
-    tell $ Endo ([S.JmpCond (negateRelOperator $ translateRelOp op) l2 (S.VVar estr1) (S.VVar estr2)]<>)
+    tell $ Endo ([Q.JmpCond (negateRelOperator $ translateRelOp op) l2 (Q.VVar estr1) (Q.VVar estr2)]<>)
 translateCond b (A.Ram _ (A.And _) e1 e2) l1 l2 =
   do
     translateCond False e1 l1 l2
@@ -453,59 +453,59 @@ translateCond b (A.Ram _ (A.Or _) e1 e2) l1 l2 =
   do
     lor <- getLabelName "_or"
     translateCond True e1 l1 lor
-    tell $ Endo ([S.PutLab lor]<>)
+    tell $ Endo ([Q.PutLab lor]<>)
     translateCond b e2 l1 l2
 translateCond b (A.Prim _ (A.Bool _ True)) l1 _ =
   when b $
-    tell $ Endo ([S.Jmp l1]<>)
+    tell $ Endo ([Q.Jmp l1]<>)
 translateCond b (A.Prim _ (A.Bool _ False)) _ l2 =
   unless b $
-    tell $ Endo ([S.Jmp l2]<>)
+    tell $ Endo ([Q.Jmp l2]<>)
 translateCond b e l1 l2 =
   do
     estr <- translateExpr e
     if b then
-      tell $ Endo ([JmpCond S.Neq l1 (VVar estr) (VConst (CByte 0))]<>)
+      tell $ Endo ([JmpCond Q.Neq l1 (VVar estr) (VConst (CByte 0))]<>)
     else
-      tell $ Endo ([JmpCond S.Equ l2 (VVar estr) (VConst (CByte 0))]<>)
+      tell $ Endo ([JmpCond Q.Equ l2 (VVar estr) (VConst (CByte 0))]<>)
 
--- Translates the ast expression to a ssa expression, returning a ssa var name that will
+-- Translates the ast expression to a quadruple expression, returning a quadruple var name that will
 -- hold the value of the calculations
 -- Cast: calculate the expression, get its type from store and translate the given type,
 --    then create a new declaration of a pointer where rvalue is the cast to the translated
---    type of the ssa variable that got generated from expression
--- ArrAcs: calculate the subexpressions and get the respective ssa vars, then create a declaration
---    that assigns the value of the accessed array into a new ssa variable, then return that variable
--- App (Call function): translate the args and map the resulting ssa variables to VVar type, then find
+--    type of the quadruple variable that got generated from expression
+-- ArrAcs: calculate the subexpressions and get the respective quadruple vars, then create a declaration
+--    that assigns the value of the accessed array into a new quadruple variable, then return that variable
+-- App (Call function): translate the args and map the resulting quadruple variables to VVar type, then find
 --    the function in the store and create a declaration that assigns the value of the application
 --    to a new variable, then return that varaiable
 -- App (Call method): do the same as calling method, but also get and add the location of the method
 --    in the vtable
 -- Elem: calculate the subexpression and find the attribute that we want to access, then combine this information
---    into a new declaration that assigns a value of that attribute to a new ssa var, then return that var
--- New (class): translate type and assign the value of class initialization to the new ssa variable, then return it
+--    into a new declaration that assigns a value of that attribute to a new quadruple var, then return that var
+-- New (class): translate type and assign the value of class initialization to the new quadruple variable, then return it
 -- New (array): do the same as new class, but also calculate the subexpression that represents the length and
 --    incorporate it into rvalue of the declaration
--- NotNeg (Not): calculate the subexpression, translate the type and create a declaration to a new ssa 
---    variable with a not statement incorporated, then return the ssa variable
+-- NotNeg (Not): calculate the subexpression, translate the type and create a declaration to a new quadruple 
+--    variable with a not statement incorporated, then return the quadruple variable
 -- NotNeg (Neg): do the same as the not case, however use a ram constructor to describe the negation
---    by doing a subtraction 0 - 'ssa var' from subexrpession
+--    by doing a subtraction 0 - 'quadruple var' from subexrpession
 -- Ram:
 --    Simplify the expression if left or right is a negation of a subexpression
---    If the operator is a bool operator (and, or), create a new ssa variable and assign one to it, then
---    perform a classical conditional translation, if the value turns out to be true, assign a 1 to the ssa 
+--    If the operator is a bool operator (and, or), create a new quadruple variable and assign one to it, then
+--    perform a classical conditional translation, if the value turns out to be true, assign a 1 to the quadruple 
 --    variable and return it, otherwise just return it
 --    If the operator is a regular arithmetic operator, calculate the left and right subexpressions, get the
 --    type from the operator and create a declaration that assigns a value of the operation performed on two
---    ssa variables from subexepressions to a new ssa variable. It also does a small optimalization if the
+--    quadruple variables from subexepressions to a new quadruple variable. It also does a small optimalization if the
 --    left value is a primitive type and the operator is commutative by swapping the lvalue and rvalue
 --    (Assembly won't have to swap it using registers)
--- Var: Just get the new ssa variable name from the store's varMap
--- Prim (String): gets the label that represents a given string and assigns it to a new ssa variable
+-- Var: Just get the new quadruple variable name from the store's varMap
+-- Prim (String): gets the label that represents a given string and assigns it to a new quadruple variable
 --    If it doesn't exist, create a new label for that string and save it in the String - Label mapping
---    then assign the label to the a new ssa variable and return the variable
+--    then assign the label to the a new quadruple variable and return the variable
 -- Prim (Other): translates the primitive type and primitive value into a const data, then creates a
---    declaration that assigns that const to a new ssa variable, then it returns it
+--    declaration that assigns that const to a new quadruple variable, then it returns it
 translateExpr :: A.Expr -> BuildMonad String
 translateExpr (A.Cast _ typ e) =
   do
@@ -514,30 +514,30 @@ translateExpr (A.Cast _ typ e) =
     let etyp = fromJust $ getType estr store
     let modtyp = translateType typ
     case (etyp, modtyp) of
-      (S.TByte, S.TByte) -> return estr
-      (S.TInt, S.TInt) -> return estr
+      (Q.TByte, Q.TByte) -> return estr
+      (Q.TInt, Q.TInt) -> return estr
       (TRef, TRef) -> do
         let cname = getClassTypeName typ
-        ssaVar <- getSsaVar TRef
-        tell $ Endo ([S.Decl TRef ssaVar (S.Cast ("_class_" ++ cname) (VVar estr))]<>)
-        return ssaVar
+        quadVar <- getQuadVar TRef
+        tell $ Endo ([Q.Decl TRef quadVar (Q.Cast ("_class_" ++ cname) (VVar estr))]<>)
+        return quadVar
 translateExpr (A.ArrAcs _ e1 e2 (Just typ)) =
   do
     estr1 <- translateExpr e1
     estr2 <- translateExpr e2
     let modtyp = translateType typ
-    ssaVar <- getSsaVar modtyp
-    tell $ Endo ([S.Decl modtyp ssaVar (S.ArrAcs estr1 (VVar estr2))]<>)
-    return ssaVar
+    quadVar <- getQuadVar modtyp
+    tell $ Endo ([Q.Decl modtyp quadVar (Q.ArrAcs estr1 (VVar estr2))]<>)
+    return quadVar
 translateExpr (App _ (A.Var _ (Ident x)) args) =
   do
     estrs <- mapM translateExpr args
     let vestrs = P.map VVar estrs
     f <- findFunction x
     let typ = getFunctionType f
-    ssaVar <- getSsaVar typ
-    tell $ Endo ([S.Decl typ ssaVar (FunApp x vestrs)]<>)
-    return ssaVar
+    quadVar <- getQuadVar typ
+    tell $ Endo ([Q.Decl typ quadVar (FunApp x vestrs)]<>)
+    return quadVar
 translateExpr (App _ (A.Elem _ e (Ident x) (Just cname)) args) =
   do
     estrs <- mapM translateExpr args
@@ -546,50 +546,50 @@ translateExpr (App _ (A.Elem _ e (Ident x) (Just cname)) args) =
     (met, i) <- findMethod x cname
     f <- findFunction met
     let typ = getFunctionType f
-    ssaVar <- getSsaVar typ
-    tell $ Endo ([S.Decl typ ssaVar (MetApp estr i vestrs)]<>)
-    return ssaVar
+    quadVar <- getQuadVar typ
+    tell $ Endo ([Q.Decl typ quadVar (MetApp estr i vestrs)]<>)
+    return quadVar
 translateExpr (A.Elem _ e (Ident x) (Just cname)) =
   do
     estr <- translateExpr e
     attr <- getAttribute x cname
     let typ = getAttributeType attr
-    ssaVar <- getSsaVar typ
-    tell $ Endo ([S.Decl typ ssaVar (S.Elem estr (getAttributeOffset attr))]<>)
-    return ssaVar
+    quadVar <- getQuadVar typ
+    tell $ Endo ([Q.Decl typ quadVar (Q.Elem estr (getAttributeOffset attr))]<>)
+    return quadVar
 translateExpr (New _ typ Nothing) =
   do
     let modtyp = translateType typ
-    ssaVar <- getSsaVar modtyp
+    quadVar <- getQuadVar modtyp
     let x = getClassTypeName typ
-    tell $ Endo ([S.Decl modtyp ssaVar (S.NewObj ("_class_" ++ x))]<>)
-    return ssaVar
+    tell $ Endo ([Q.Decl modtyp quadVar (Q.NewObj ("_class_" ++ x))]<>)
+    return quadVar
 translateExpr (New _ typ (Just e)) =
   do
     estr <- translateExpr e
     let modtyp = translateType typ
-    ssaVar <- getSsaVar TRef
-    tell $ Endo ([S.Decl TRef ssaVar (NewArray modtyp (VVar estr))]<>)
-    return ssaVar
+    quadVar <- getQuadVar TRef
+    tell $ Endo ([Q.Decl TRef quadVar (NewArray modtyp (VVar estr))]<>)
+    return quadVar
 translateExpr (NotNeg _ (A.Not _) e) =
   do
     estr <- translateExpr e
     store <- get
     let typ = fromJust $ getType estr store
-    ssaVar <- getSsaVar typ
-    tell $ Endo ([S.Decl typ ssaVar (S.Not (VVar estr))]<>)
-    return ssaVar
+    quadVar <- getQuadVar typ
+    tell $ Endo ([Q.Decl typ quadVar (Q.Not (VVar estr))]<>)
+    return quadVar
 translateExpr (NotNeg _ (Neg _) e) =
   do
     estr <- translateExpr e
     store <- get
     let typ = fromJust $ getType estr store
-    ssaVar <- getSsaVar typ
+    quadVar <- getQuadVar typ
     if isByteType typ then
-      tell $ Endo ([S.Decl typ ssaVar (S.Ram S.Sub (VConst $ S.CByte 0) (VVar estr))]<>) --TODO maybe not needed
+      tell $ Endo ([Q.Decl typ quadVar (Q.Ram Q.Sub (VConst $ Q.CByte 0) (VVar estr))]<>) --TODO maybe not needed
     else
-      tell $ Endo ([S.Decl typ ssaVar (S.Ram S.Sub (VConst $ S.CInt 0) (VVar estr))]<>)
-    return ssaVar
+      tell $ Endo ([Q.Decl typ quadVar (Q.Ram Q.Sub (VConst $ Q.CInt 0) (VVar estr))]<>)
+    return quadVar
 translateExpr (A.Ram pos (A.Add pos2) e1 (NotNeg pos3 (A.Neg pos4) e2)) =
   translateExpr (A.Ram pos (A.Sub pos2) e1 e2)
 translateExpr (A.Ram pos (A.Add pos2) (NotNeg pos3 (A.Neg pos4) e1) e2) =
@@ -598,13 +598,13 @@ translateExpr e@(A.Ram _ op e1 e2) | isBoolOperator op =
   do
     l1 <- getLabelName "_cond"
     l2 <- getLabelName "_cond"
-    ssaVar <- getSsaVar TByte
-    tell $ Endo ([S.Decl TByte ssaVar (Value (VConst (CByte 0)))]<>)
+    quadVar <- getQuadVar TByte
+    tell $ Endo ([Q.Decl TByte quadVar (Value (VConst (CByte 0)))]<>)
     translateCond False e l1 l2
     tell $ Endo ([PutLab l1]<>)
-    tell $ Endo ([S.Ass TByte (LVar ssaVar) (Value (VConst (CByte 1)))]<>)
+    tell $ Endo ([Q.Ass TByte (LVar quadVar) (Value (VConst (CByte 1)))]<>)
     tell $ Endo ([PutLab l2]<>)
-    return ssaVar
+    return quadVar
 translateExpr (A.Ram _ op e1 e2) =
   do
     estr1 <- translateExpr e1
@@ -612,12 +612,12 @@ translateExpr (A.Ram _ op e1 e2) =
     let modop = translateRamOp op
     store <- get
     let typ = fromJust $ getType estr1 store
-    ssaVar <- getSsaVar typ
-    if (modop == S.Add || modop == S.Mul) && isPrimExpr e1 then
-      tell $ Endo ([S.Decl typ ssaVar (S.Ram modop (VVar estr2) (VVar estr1))]<>)
+    quadVar <- getQuadVar typ
+    if (modop == Q.Add || modop == Q.Mul) && isPrimExpr e1 then
+      tell $ Endo ([Q.Decl typ quadVar (Q.Ram modop (VVar estr2) (VVar estr1))]<>)
     else
-      tell $ Endo ([S.Decl typ ssaVar (S.Ram modop (VVar estr1) (VVar estr2))]<>)
-    return ssaVar
+      tell $ Endo ([Q.Decl typ quadVar (Q.Ram modop (VVar estr1) (VVar estr2))]<>)
+    return quadVar
 translateExpr (Var _ (Ident x)) =
   do
     gets (fromJust . getName x)
@@ -625,75 +625,75 @@ translateExpr (Prim _ (Str _ x)) =
   do
     store <- get
     let xlab = getStrLabel x store
-    ssaVar <- getSsaVar S.TRef
+    quadVar <- getQuadVar Q.TRef
     if isNothing xlab then do
       newLab <- getLabelName "_str"
       store2 <- get
       put $ putStrLabel x newLab store2
-      tell $ Endo ([S.Decl S.TRef ssaVar (S.NewString newLab)]<>)
-      return ssaVar
+      tell $ Endo ([Q.Decl Q.TRef quadVar (Q.NewString newLab)]<>)
+      return quadVar
     else do
       let lab = fromJust xlab
-      tell $ Endo ([S.Decl S.TRef ssaVar (S.NewString lab)]<>)
-      return ssaVar
+      tell $ Endo ([Q.Decl Q.TRef quadVar (Q.NewString lab)]<>)
+      return quadVar
 translateExpr (Prim _ pr) =
   do
     let typ = translatePrimToType pr
     let const = translatePrimToConst pr
-    ssaVar <- getSsaVar typ
-    tell $ Endo ([S.Decl typ ssaVar (S.Value (VConst const))]<>)
-    return ssaVar
+    quadVar <- getQuadVar typ
+    tell $ Endo ([Q.Decl typ quadVar (Q.Value (VConst const))]<>)
+    return quadVar
 
 
--- Translates ast type to ssa type
-translateType :: A.Type -> S.Type
-translateType (A.TBool _) = S.TByte
-translateType (A.TVoid _) = S.TByte
-translateType (A.TInt _) = S.TInt
-translateType _ = S.TRef
+-- Translates ast type to quadruple type
+translateType :: A.Type -> Q.Type
+translateType (A.TBool _) = Q.TByte
+translateType (A.TVoid _) = Q.TByte
+translateType (A.TInt _) = Q.TInt
+translateType _ = Q.TRef
 
 -- translateRelOp and translateRamOp divide the old ast RAMOp 
 -- data structure into two distinct operators - relational and
 -- arithmetic
-translateRelOp :: A.RAMOp -> S.RelOp
-translateRelOp (A.Lt _) = S.Lt
-translateRelOp (A.Le _) = S.Le
-translateRelOp (A.Equ _) = S.Equ
-translateRelOp (A.Neq _) = S.Neq
-translateRelOp (A.Gt _) = S.Gt
-translateRelOp (A.Ge _) = S.Ge
-translateRelOp _ = S.Equ -- Won't happen - Rest are arithmetic operators 
+translateRelOp :: A.RAMOp -> Q.RelOp
+translateRelOp (A.Lt _) = Q.Lt
+translateRelOp (A.Le _) = Q.Le
+translateRelOp (A.Equ _) = Q.Equ
+translateRelOp (A.Neq _) = Q.Neq
+translateRelOp (A.Gt _) = Q.Gt
+translateRelOp (A.Ge _) = Q.Ge
+translateRelOp _ = Q.Equ -- Won't happen - Rest are arithmetic operators 
 
-translateRamOp :: A.RAMOp -> S.Op
-translateRamOp (A.Add _) = S.Add
-translateRamOp (A.Sub _) = S.Sub
-translateRamOp (A.Mul _) = S.Mul
-translateRamOp (A.Div _) = S.Div
-translateRamOp (A.Mod _) = S.Mod
-translateRamOp (A.And _) = S.And
-translateRamOp (A.Or _) = S.Or
-translateRamOp _ = S.Add -- Won't happen -  Rest are relational operators
+translateRamOp :: A.RAMOp -> Q.Op
+translateRamOp (A.Add _) = Q.Add
+translateRamOp (A.Sub _) = Q.Sub
+translateRamOp (A.Mul _) = Q.Mul
+translateRamOp (A.Div _) = Q.Div
+translateRamOp (A.Mod _) = Q.Mod
+translateRamOp (A.And _) = Q.And
+translateRamOp (A.Or _) = Q.Or
+translateRamOp _ = Q.Add -- Won't happen -  Rest are relational operators
 
---Translates primitive data type into matching ssa type
-translatePrimToType :: A.Prim -> S.Type
-translatePrimToType (Int _ _) = S.TInt
-translatePrimToType (Bool _ _) = S.TByte
-translatePrimToType (Str _ _) = S.TRef
-translatePrimToType (Null _) = S.TRef
+--Translates primitive data type into matching quadruple type
+translatePrimToType :: A.Prim -> Q.Type
+translatePrimToType (Int _ _) = Q.TInt
+translatePrimToType (Bool _ _) = Q.TByte
+translatePrimToType (Str _ _) = Q.TRef
+translatePrimToType (Null _) = Q.TRef
 
--- Translates primitive values of ast into ssa consts
-translatePrimToConst :: A.Prim -> S.Const
+-- Translates primitive values of ast into quadruple consts
+translatePrimToConst :: A.Prim -> Q.Const
 translatePrimToConst (Int _ i) = CInt i
 translatePrimToConst (Bool _ True) = CByte 1
 translatePrimToConst (Bool _ False) = CByte 0
 translatePrimToConst (Str _ s) = CStr s
 translatePrimToConst (Null _) = CNull
 
--- Creates an unique ssa variable using store's counter
+-- Creates an unique quadruple variable using store's counter
 -- and updates the store with a new counter and a mapping
 -- of created var to its type
-getSsaVar :: S.Type -> BuildMonad String
-getSsaVar typ =
+getQuadVar :: Q.Type -> BuildMonad String
+getQuadVar typ =
   do
     store <- get
     let cnt = show $ counter store

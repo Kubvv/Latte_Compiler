@@ -1,4 +1,4 @@
-module SsaData where
+module QuadruplesData where
 
 import Data.Map as M
 import Data.Monoid
@@ -9,11 +9,11 @@ import Data.Maybe as Y
 import Control.Monad.State
 import Control.Monad.Writer
 
-{- SsaData holds all data structures used by Ssa and other backend classes
- - It contains the SsaStore which is used as an state in Ssa file, Monad
- - declaration types and most importantly the definition of the Ssa data
+{- QuadruplesData holds all data structures used by quadruple and other backend classes
+ - It contains the QuadStore which is used as an state in quadruple file, Monad
+ - declaration types and most importantly the definition of the quadruple data
  - structure that we want to translate our Ast tree into
- - Note that the Ssa used in this compiler is not a complete one -
+ - Note that the quadruple used in this compiler is not a complete one -
  - for instance it doesn't have a phi function
  - The main purpose of the inter translation is to:
  - 1. break down blocks, ifs and whiles into a set of jumps comparisons and labels,  
@@ -21,64 +21,64 @@ import Control.Monad.Writer
  - 3. follow the one variable - one assignment policy -}
 
 
--- SSaStore holds crucial information used during translation between Ast and SSa
-data SsaStore = SStore {
-  varMap :: Map String String, -- Holds a mapping between an old ast variable name and a new ssa variable
-  typeMap :: Map String Type, -- Holds a mapping between a ssa var and its type
+-- QuadStore holds crucial information used during translation between Ast and Quadruples
+data QuadStore = QStore {
+  varMap :: Map String String, -- Holds a mapping between an old ast variable name and a new quad variable
+  typeMap :: Map String Type, -- Holds a mapping between a quad variable and its type
   strMap :: Map String String, -- Holds a mapping between string literals and auto-generated labels for them
   funs :: [Function], -- Holds all defined functions of the input file
   cls :: [Class], -- Holds all defined classes of the input file and pre defined classes
-  counter :: Int -- Holds a counter used for generating Ssa variables and labels to ensure their uniqueness
+  counter :: Int -- Holds a counter used for generating quadruple variables and labels to ensure their uniqueness
 }
 
-emptyStore :: SsaStore
-emptyStore = SStore M.empty M.empty M.empty [] [] 0
+emptyStore :: QuadStore
+emptyStore = QStore M.empty M.empty M.empty [] [] 0
 
--- SSaStore Lookup functions for finding keys in map
-getName :: String -> SsaStore -> Maybe String
-getName s (SStore varMap _ _ _ _ _) =
+-- QuadStore Lookup functions for finding keys in map
+getName :: String -> QuadStore -> Maybe String
+getName s (QStore varMap _ _ _ _ _) =
   M.lookup s varMap
 
-getType :: String -> SsaStore -> Maybe Type
-getType s (SStore _ typeMap _ _ _ _) =
+getType :: String -> QuadStore -> Maybe Type
+getType s (QStore _ typeMap _ _ _ _) =
   M.lookup s typeMap
 
-getStrLabel :: String -> SsaStore -> Maybe String
-getStrLabel s (SStore _ _ strMap _ _ _) =
+getStrLabel :: String -> QuadStore -> Maybe String
+getStrLabel s (QStore _ _ strMap _ _ _) =
   M.lookup s strMap
 
--- SsaStore put functions
-putClass :: Class -> SsaStore -> SsaStore
-putClass c (SStore varMap typeMap strMap funs cls counter) = 
-  SStore varMap typeMap strMap funs (c:cls) counter
+-- QuadStore put functions
+putClass :: Class -> QuadStore -> QuadStore
+putClass c (QStore varMap typeMap strMap funs cls counter) = 
+  QStore varMap typeMap strMap funs (c:cls) counter
 
-putFunction :: Function -> SsaStore -> SsaStore
-putFunction f (SStore varMap typeMap strMap funs cls counter) = 
-  SStore varMap typeMap strMap (f:funs) cls counter
+putFunction :: Function -> QuadStore -> QuadStore
+putFunction f (QStore varMap typeMap strMap funs cls counter) = 
+  QStore varMap typeMap strMap (f:funs) cls counter
 
-putFunctions :: [Function] -> SsaStore -> SsaStore
-putFunctions fs (SStore varMap typeMap strMap funs cls counter) = 
-  SStore varMap typeMap strMap fs cls counter
+putFunctions :: [Function] -> QuadStore -> QuadStore
+putFunctions fs (QStore varMap typeMap strMap funs cls counter) = 
+  QStore varMap typeMap strMap fs cls counter
 
-putDefaultFunctions :: SsaStore -> SsaStore
-putDefaultFunctions (SStore varMap typeMap strMap funs cls counter) = 
-  SStore varMap typeMap strMap (defaultFunctions ++ funs) cls counter
+putDefaultFunctions :: QuadStore -> QuadStore
+putDefaultFunctions (QStore varMap typeMap strMap funs cls counter) = 
+  QStore varMap typeMap strMap (defaultFunctions ++ funs) cls counter
 
-incrCounter :: SsaStore -> SsaStore
-incrCounter (SStore varMap typeMap strMap funs cls counter) = 
-  SStore varMap typeMap strMap funs cls (counter + 1)
+incrCounter :: QuadStore -> QuadStore
+incrCounter (QStore varMap typeMap strMap funs cls counter) = 
+  QStore varMap typeMap strMap funs cls (counter + 1)
 
-putType :: String -> Type -> SsaStore -> SsaStore
-putType typeName typ (SStore varMap typeMap strMap funs cls counter) = 
-  SStore varMap (M.insert typeName typ typeMap) strMap funs cls counter
+putType :: String -> Type -> QuadStore -> QuadStore
+putType typeName typ (QStore varMap typeMap strMap funs cls counter) = 
+  QStore varMap (M.insert typeName typ typeMap) strMap funs cls counter
 
-putVar :: String -> String -> SsaStore -> SsaStore
-putVar varName typeName (SStore varMap typeMap strMap funs cls counter) = 
-  SStore (M.insert varName typeName varMap) typeMap strMap funs cls counter
+putVar :: String -> String -> QuadStore -> QuadStore
+putVar varName typeName (QStore varMap typeMap strMap funs cls counter) = 
+  QStore (M.insert varName typeName varMap) typeMap strMap funs cls counter
 
-putStrLabel :: String -> String -> SsaStore -> SsaStore
-putStrLabel str lab (SStore varMap typeMap strMap funs cls counter) =
-  SStore varMap typeMap (M.insert str lab strMap) funs cls counter
+putStrLabel :: String -> String -> QuadStore -> QuadStore
+putStrLabel str lab (QStore varMap typeMap strMap funs cls counter) =
+  QStore varMap typeMap (M.insert str lab strMap) funs cls counter
 
 -- Modify the function with a matching name in the given list of functions
 -- This function only changes the arguments and stmts of the function
@@ -119,13 +119,13 @@ defaultFunctions = [
 
 -- TranslateMonad is mostly responsible for generating .rodata
 -- section and doesn't require a writer
-type TranslateMonad = StateT SsaStore IO
+type TranslateMonad = StateT QuadStore IO
 
 -- Build monad is what creates the .text part of the assembly code
 -- It uses Endo to avoid concatenating all statetments using regular '++' 
-type BuildMonad = WriterT (Endo [Stmt]) (StateT SsaStore IO)
+type BuildMonad = WriterT (Endo [Stmt]) (StateT QuadStore IO)
 
--- Ssa data structure --
+-- quadruple data structure --
 
 -- Program is converted into a set of three distinguishable "types"
 -- Class list defines all (including pre defined) class attributes and methods
@@ -143,7 +143,7 @@ instance Show Program where
     ++ concatMap (\(s1,s2) -> s1 ++ ": " ++ s2 ++ "\n") labs
 
 
--- Class is a Ssa data structure that holds all neccessary information 
+-- Class is a quadruple data structure that holds all neccessary information 
 -- used by assebly generator later on. Class fields include:
 -- String s - Name of the class
 -- Maybe String ms - Name of the parent class (if exists)
@@ -188,7 +188,7 @@ isAttributeReferenceType _ = False
 -- String s - function's name
 -- Type t - function's return type
 -- [(Type, String)] args - function arguments
--- [Stmt] stmts - function ssa statements (in a block)
+-- [Stmt] stmts - function's quadruple statements (in a block)
 data Function = Fun String Type [(Type, String)] [Stmt]
   deriving (Eq, Ord)
 
@@ -204,9 +204,9 @@ getFunctionType :: Function -> Type
 getFunctionType (Fun _ t _ _) = t
 
 
--- Stmt data is a ssa equivalent to Ast stmt data type. Types are required in ssa
+-- Stmt data is a quadruples equivalent to Ast stmt data type. Types are required in quadruples
 -- statements as we want to know their sizes when we assign registers to them
--- Ssa Stmt only contains statments allowed by Ssa - it doesn't have
+-- quadruple Stmt only contains statments allowed by quadruple - it doesn't have
 -- loops, ifs, blocks etc. Everything is replaced by a Declaration
 -- Assignment and Returns, and rest of the more complex ast stmt structures
 -- are converted into a set of control statements of Jump, Jump with condition
@@ -288,7 +288,7 @@ isReferenceExpr _ = False
 --   Breaking new into three sub categories of object, string and array,
 --    since they're all differently initialized in the Library
 --   Removing neg from the NotNeg as it is converted into a ram operation
---   Removing Var as all vars are swapped to new Ssa vars
+--   Removing Var as all vars are swapped to new quadruple vars
 --   Changing Prim to Val data
 -- All of the other data structures are also converted using Val
 -- in order to linearize the program structure
@@ -353,8 +353,8 @@ isMethodOrArrayExpr MetApp {} = True
 isMethodOrArrayExpr Elem {} = True
 isMethodOrArrayExpr _ = False
 
--- Type includes all possible Ssa types that can be linked
--- with ssa variables
+-- Type includes all possible quadruple types that can be linked
+-- with quad variables
 data Type = 
     TInt -- Regular integer stored in four bytes
   | TByte -- Boolean value stored in one byte
@@ -448,7 +448,7 @@ getOperatorSize _ = TInt
 -- LType defines all possbile left value types that can be used
 -- as an left value in the assignment statment
 data LType =
-    LVar String -- Regular ssa variable named String
+    LVar String -- Regular quad variable named String
   | LArr String Val -- Array element of array String at position val
   | LElem String Integer -- Attribute of class String at position i
   deriving (Eq, Ord)
