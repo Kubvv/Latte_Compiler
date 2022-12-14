@@ -6,7 +6,7 @@ import Data.List as L
 import Data.Bifunctor as Bi
 import Control.Monad.Writer
 
-import SsaData as S
+import QuadruplesData as Q
 import Assembler as A
 import LivenessCheck
 import LivenessCheckData
@@ -100,7 +100,7 @@ xor False True = True
 xor _ _ = False
 
 
-generate :: S.Program -> IO A.Program
+generate :: Q.Program -> IO A.Program
 generate prog =
   do
     endoastmts <- execWriterT (generateProgram prog)
@@ -108,8 +108,8 @@ generate prog =
     let res = assemblyClear astmts
     return (A.Prog res)
 
-generateProgram :: S.Program -> GeneratorMonad ()
-generateProgram (S.Prog cls funs strs) =
+generateProgram :: Q.Program -> GeneratorMonad ()
+generateProgram (Q.Prog cls funs strs) =
   do
     tell $ Endo ([Sec "rodata"]<>)
     mapM_ generateClass cls
@@ -117,7 +117,7 @@ generateProgram (S.Prog cls funs strs) =
     tell $ Endo ([Sec "text"]<>)
     mapM_ generateFunction funs
 
-generateClass :: S.Class -> GeneratorMonad ()
+generateClass :: Q.Class -> GeneratorMonad ()
 generateClass (Cls x mx off attr met) =
   do
     tell $ Endo ([Glo x]<>)
@@ -283,7 +283,7 @@ generateStmt gd (i, JmpCond op s v1 v2) =
     where
       modv1 = generateValue gd v1
       modv2 = generateValue gd v2
-generateStmt _ (_, S.PutLab s) =
+generateStmt _ (_, Q.PutLab s) =
   do
     tell $ Endo ([A.PutLab s]<>)
 
@@ -303,7 +303,7 @@ generateJmpCond op s av1 av2 =
 generateExpr :: GeneratorData -> Expr -> Integer -> Type -> AVal -> GeneratorMonad ()
 generateExpr gd (Cast s v) i typ dest =
   do
-    generateCall gd (VLab "_cast") [v, S.VConst (CStr s)] i typ dest
+    generateCall gd (VLab "_cast") [v, Q.VConst (CStr s)] i typ dest
 generateExpr gd (ArrAcs s id) i typ (VReg r) =
   do
     generateCall gd (VLab "_getarritemptr") [VVar s, id] i typ (VReg R12)
@@ -346,10 +346,10 @@ generateExpr gd (Elem s id) i typ dest =
     tell $ Endo ([MOV dest tmp]<>)
 generateExpr gd (NewObj s) i typ dest =
   do
-    generateCall gd (VLab "_new") [S.VConst (CStr s)] i typ dest
+    generateCall gd (VLab "_new") [Q.VConst (CStr s)] i typ dest
 generateExpr gd (NewString s) i typ dest =
   do
-    generateCall gd (VLab "_new_string") [S.VConst (CStr s)] i typ dest
+    generateCall gd (VLab "_new_string") [Q.VConst (CStr s)] i typ dest
 generateExpr gd (NewArray TInt v) i typ dest =
   do
     generateCall gd (VLab "_new_int_arr") [v] i typ dest
@@ -359,13 +359,13 @@ generateExpr gd (NewArray TByte v) i typ dest =
 generateExpr gd (NewArray TRef v) i typ dest =
   do
     generateCall gd (VLab "_new_obj_arr") [v] i typ dest
-generateExpr _ (Not (S.VConst (CByte x))) i typ (VReg r) =
+generateExpr _ (Not (Q.VConst (CByte x))) i typ (VReg r) =
   do
     tell $ Endo ([MOV (VReg (shrink r TByte)) (notConstant x)]<>)
-generateExpr _ (Not (S.VConst (CByte x))) i typ dest =
+generateExpr _ (Not (Q.VConst (CByte x))) i typ dest =
   do
     tell $ Endo ([MOV dest (notConstant x)]<>)
-generateExpr gd (Not (S.VVar x)) i typ dest =
+generateExpr gd (Not (Q.VVar x)) i typ dest =
   do
     let av = fromJust $ getGeneratorAvalFromStr x gd
     unless (isRegisterValue av) $
@@ -404,13 +404,13 @@ generateExpr gd (Ram op v1 v2) i typ dest =
     tell $ Endo ([MOV (VReg moddest) modv1]<>)
     tell $ Endo ([generateArth op (VReg moddest) modv2]<>)
     tell $ Endo ([MOV dest (VReg moddest)]<>)
-generateExpr _ (Value (S.VConst x)) i typ dest@(VReg r) =
+generateExpr _ (Value (Q.VConst x)) i typ dest@(VReg r) =
   do
     case x of
       CNull -> tell $ Endo ([XOR dest dest]<>)
       CInt c -> tell $ Endo ([MOV (VReg (shrink r TInt)) (A.VConst c)]<>)
       CByte c -> tell $ Endo ([MOV (VReg (shrink r TByte)) (A.VConst c)]<>)
-generateExpr _ (Value (S.VConst x)) i _ dest =
+generateExpr _ (Value (Q.VConst x)) i _ dest =
   do
     case x of
       CNull -> do
@@ -422,7 +422,7 @@ generateExpr _ (Value (S.VConst x)) i _ dest =
       CByte c -> do
         tell $ Endo ([MOV (VReg BL) (A.VConst c)]<>)
         tell $ Endo ([MOV dest (VReg BL)]<>)
-generateExpr gd (Value (S.VVar x)) i _ dest =
+generateExpr gd (Value (Q.VVar x)) i _ dest =
   do
     let av = fromJust $ getGeneratorAvalFromStr x gd
     if isRegisterValue av then
@@ -528,10 +528,11 @@ generateCallArgs _ [] sargs =
 
 
 generateValue :: GeneratorData -> Val -> AVal
-generateValue _ (S.VConst (CInt i)) = A.VConst i
-generateValue _ (S.VConst (CByte i)) = A.VConst i
-generateValue _ (S.VConst (CStr s)) = VLab s
-generateValue gd (S.VVar s) = fromJust $ getGeneratorAvalFromStr s gd
+generateValue _ (Q.VConst (CInt i)) = A.VConst i
+generateValue _ (Q.VConst (CByte i)) = A.VConst i
+generateValue _ (Q.VConst (CStr s)) = VLab s
+generateValue _ (Q.VConst CNull) = A.VConst 0
+generateValue gd (Q.VVar s) = fromJust $ getGeneratorAvalFromStr s gd
 
 generateJumpType :: RelOp -> String -> AStmt
 generateJumpType Lt s = JL (VLab s)

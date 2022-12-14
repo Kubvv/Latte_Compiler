@@ -7,7 +7,7 @@ import Data.Monoid
 
 import Assembler
 import RegisterAllocData
-import SsaData as S
+import QuadruplesData
 
 type GeneratorMonad = WriterT (Endo [AStmt]) IO
 

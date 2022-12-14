@@ -4,7 +4,7 @@ import Control.Monad.State
 
 import Data.Set as S
 
-import SsaData
+import QuadruplesData
 
 -- BefAftStmt is a data structure that holds extra statement information,
 -- such as line number, next stmt's line (reffered to as link) and sets of 

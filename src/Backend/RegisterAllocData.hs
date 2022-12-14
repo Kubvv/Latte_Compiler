@@ -2,7 +2,7 @@ module RegisterAllocData where
 
 import LivenessCheckData
 import Assembler as A
-import SsaData as S
+import QuadruplesData as Q
 
 -- Which var occupies register, from, to
 type Range = (Maybe String, Integer, Integer)
@@ -44,7 +44,7 @@ getFirstMemory [] = Nothing
 getFirstMemory (r@VMem {}:avs) = Just r
 getFirstMemory (_:avs) = getFirstMemory avs
 
-type Arg = (S.Type, String)
+type Arg = (Q.Type, String)
 
 findArg :: [Arg] -> String -> Maybe Arg
 findArg [] _ = Nothing

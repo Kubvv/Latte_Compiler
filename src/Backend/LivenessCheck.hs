@@ -6,12 +6,12 @@ import Prelude as P
 
 import Control.Monad.State
 
-import SsaData
+import QuadruplesData
 import LivenessCheckData
 
 -- Finds the line of a given block (represented as list) with label name 
 -- matching the second argument findLabelLine should always return Just line
--- as all labels have been correctly generated during ssa translation
+-- as all labels have been correctly generated during quadruple translation
 findLabelLine :: [(Integer, Stmt)] -> String -> Maybe Integer
 findLabelLine [] _ = Nothing
 findLabelLine ((line, PutLab x):stmts) s

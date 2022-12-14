@@ -4,7 +4,7 @@ import Prelude as P
 import Data.Map as M
 import Data.Maybe
 
-import SsaData
+import QuadruplesData
 import LivenessCheck
 import LivenessCheckData
 import Assembler

@@ -1,6 +1,6 @@
 module Assembler where
 
-import SsaData as S
+import QuadruplesData as Q
 
 {- Assembler holds a data structure for describing an x86_64 assembler
  - program - it's a final data structure that will be used and after translation
@@ -169,7 +169,7 @@ increase RBP = RBP
 increase RSP = RSP
 
 -- Shrink a given register to a size that matches a given type
-shrink :: Register -> S.Type -> Register
+shrink :: Register -> Q.Type -> Register
 shrink RAX TInt = EAX
 shrink RAX TByte = AL
 shrink RBX TInt = EBX
@@ -202,7 +202,7 @@ shrink x TRef = x
 shrink reg typ = shrink (increase reg) typ -- Non 64 bit register shrink
 
 -- Get the size of a rgister represented by a type
-getRegisterSize :: Register -> S.Type
+getRegisterSize :: Register -> Q.Type
 getRegisterSize EAX = TInt
 getRegisterSize AL = TByte
 getRegisterSize EBX = TInt
@@ -238,10 +238,10 @@ getRegisterSize x = TRef
 data AVal =
     VConst Integer -- describes a constant integer value 
   | VReg Register -- decribes a value that is stored in a register
-    -- VMem describes a memory address. It consists of a register that holds the basic address, maybe
+    -- VMem describes a memory addresQ. It consists of a register that holds the basic address, maybe
     -- a scale * index (register and integer) and maybe an offset, which together hold sum up to the actual address
     -- I also added a maybe type for some easier evaluation during generation
-  | VMem Register (Maybe (Register, Integer)) (Maybe Integer) (Maybe S.Type)
+  | VMem Register (Maybe (Register, Integer)) (Maybe Integer) (Maybe Q.Type)
   | VLab String -- holds the label that points to a constant string value, since strings are stored in .rodata
   deriving (Eq, Ord)
 
