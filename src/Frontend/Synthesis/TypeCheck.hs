@@ -34,6 +34,13 @@ getArgType (Arg pos typ id) =
     throwIfInffered typ
     return typ
 
+-- Checks if a given ident is an illegal named reserved for something else
+isReservedName :: Ident -> Bool
+isReservedName (Ident s) = s `elem` reservedNames
+
+reservedNames :: [String]
+reservedNames = ["string", "int", "null", "void", "var", "bool", "String", "Array", "Object"]
+
 -- Cast table describes all legal casts from one type (1) to another (2)
 -- Among the legal casts we have:
 -- Casts among the same primitive types
@@ -102,6 +109,8 @@ convertClasses :: [Def] -> ExceptMonad [Class]
 convertClasses [] = return []
 convertClasses ((ClsDef pos id inh elemDefs):ds) = 
   do
+    when (isReservedName id) $
+      throwError $ (IllegalClassNameException pos id)
     elems <- mapM convertElems elemDefs
     cls <- convertClasses ds
     return (Class pos id inh elems : cls)
@@ -317,19 +326,6 @@ throwIfNoCast pos typ1 typ2 cs =
     res <- lift $ castTable cs typ1 typ2
     unless res $
       lift $ throwError (BadTypeException pos typ1 typ2)
-
--- Special case of throwIfNoCast, where we allow the casting both to the child and
--- to the parent, if types are not classes, check them with regular cast table
-throwIfBadExprCast :: Type -> Type -> [Class] -> Pos -> TypeCheckMonad ()
-throwIfBadExprCast c1@(TClass pos (Ident s1)) c2@(TClass pos2 (Ident s2)) cs pos3 =
-  do
-    b1 <- lift $ isClassParent cs s1 s2
-    b2 <- lift $ isClassParent cs s2 s1
-    when (not b1 && not b2) $
-      throwError (BadTypeException pos3 c1 c2)
-throwIfBadExprCast typ1 typ2 cs pos =
-  do
-    throwIfNoCast pos typ1 typ2 cs
 
 -- Check if two given types are the same by trying to cast one to another and vice versa
 isEqType :: Type -> Type -> [Class] -> TypeCheckMonad Bool
@@ -620,7 +616,7 @@ checkExprTypes (Cast pos typ e) =
     when (isVarType typ) $
       lift $ throwError (CastToVarException pos)
     (res, resType) <- checkExprTypes e
-    throwIfBadExprCast resType typ (css env) pos
+    throwIfNoCast pos resType typ (css env)
     case res of
       (Prim _ (Null _)) -> return (res, typ)
       (Cast _ _ e2) -> return (Cast pos typ e2, typ)
@@ -744,7 +740,6 @@ checkExprTypes (Ram pos op e1 e2) =
       (op, left, right) -> do
         let typeOp = getTypeFromRamOp left op
         case (left, right) of
-          (TStr _, TStr _) -> return (Ram pos op res1 res2, typeOp)
           (TInt _, TInt _) -> return (Ram pos op res1 res2, typeOp)
           (_, _) -> lift $ throwError (OperationTypesMismatchException (getRamOpPos op) left right)
 checkExprTypes (Var pos id) = 

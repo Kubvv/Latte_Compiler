@@ -54,6 +54,7 @@ data FrontException =
   | VarDeclarationAsBlockStmtException Pos
   | AlwaysNullException Pos
   | NegativeIndexException Pos
+  | IllegalClassNameException Pos Ident
 
 instance Show FrontException where
   show (UnexpectedTokenException pos id) = concat [
@@ -190,6 +191,9 @@ instance Show FrontException where
     ]
   show (NegativeIndexException pos) = 
     "Index cannot be a negative value " ++ show pos
+  show (IllegalClassNameException pos id) = concat [
+    "Cannot name a class with a reserved name ", showIdent id, " at ", show pos
+    ]
 
 showIdent :: Ident -> String
 showIdent (Ident s) = s
