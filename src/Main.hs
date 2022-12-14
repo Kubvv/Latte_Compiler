@@ -22,8 +22,8 @@ import TypeCheck
 import TypeCheckData as T
 import Optimizer
 
-import Ssa
-import SsaData as S
+import Quadruples
+import QuadruplesData as S
 import Revamper
 
 import Assembler
@@ -91,7 +91,7 @@ runOptimizer out prog cs =
 runInterTranslate :: String -> A.Program -> [T.Class] -> IO ()
 runInterTranslate out prog cs =
   do
-    -- putStrLn $ prnt 0 prog
+    putStrLn $ prnt 0 prog
     inter <- interTranslate prog cs
     -- putStrLn $ show inter
     revampedInter <- revamp inter

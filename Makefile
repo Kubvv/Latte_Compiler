@@ -8,8 +8,8 @@ synthesisSources = ./src/Frontend/Synthesis/Position.hs \
 parserSources = ./src/Frontend/Parser/AbsLatte.hs \
 	./src/Frontend/Parser/LexLatte.hs \
 	./src/Frontend/Parser/ParLatte.hs
-interludeSources = ./src/Interlude/Ssa.hs \
-	./src/Interlude/SsaData.hs \
+interludeSources = ./src/Interlude/Quadruples.hs \
+	./src/Interlude/QuadruplesData.hs \
 	./src/Interlude/Revamper.hs \
 	./src/Interlude/RevamperData.hs
 backendSources = ./src/Backend/LivenessCheck.hs \
