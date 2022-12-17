@@ -99,6 +99,12 @@ xor True False = True
 xor False True = True
 xor _ _ = False
 
+convertString :: String -> String -> String
+convertString [] acc = reverse acc
+convertString (s:ss) acc | s == '\n' = convertString ss ("n" ++ "\\" ++ acc)
+convertString (s:ss) acc | s == '\t' = convertString ss ("t" ++ "\\" ++ acc)
+convertString (s:ss) acc = convertString ss (s:acc)
+
 
 generate :: Q.Program -> IO A.Program
 generate prog =
@@ -152,7 +158,8 @@ generateClass (Cls x mx off attr met) =
 generateString :: (String, String) -> GeneratorMonad ()
 generateString (lab, str) =
   do
-    tell $ Endo ([A.PutLab lab, DBq (VLab str), DB (A.VConst 0)]<>)
+    let modstr = convertString str []
+    tell $ Endo ([A.PutLab lab, DBq (VLab modstr), DB (A.VConst 0)]<>)
 
 generateFunction :: Function -> GeneratorMonad ()
 generateFunction (Fun x typ args stmts) =
@@ -307,7 +314,7 @@ generateExpr gd (Cast s v) i typ dest =
 generateExpr gd (ArrAcs s id) i typ (VReg r) =
   do
     generateCall gd (VLab "_getarritemptr") [VVar s, id] i typ (VReg R12)
-    tell $ Endo ([MOV (VReg R12) (VMem R12 Nothing Nothing Nothing)]<>)
+    tell $ Endo ([MOV (VReg r) (VMem R12 Nothing Nothing Nothing)]<>)
 generateExpr gd (ArrAcs s id) i typ dest =
   do
     generateCall gd (VLab "_getarritemptr") [VVar s, id] i typ (VReg R12)
@@ -334,7 +341,7 @@ generateExpr gd (Elem s id) i typ (VReg r) =
     let r2 = fromJust $ getRegisterFromValue reg2
     nullCheck r2
     tell $ Endo ([MOV (VReg R12) (VMem r2 Nothing (Just 8) Nothing)]<>)
-    tell $ Endo ([MOV (VReg r) (VMem R12 Nothing (Just i) Nothing)]<>)
+    tell $ Endo ([MOV (VReg r) (VMem R12 Nothing (Just id) Nothing)]<>)
 generateExpr gd (Elem s id) i typ dest =
   do
     let tmp = VReg (shrink RBX typ)
@@ -342,7 +349,7 @@ generateExpr gd (Elem s id) i typ dest =
     let r2 = fromJust $ getRegisterFromValue reg2
     nullCheck r2
     tell $ Endo ([MOV (VReg R12) (VMem r2 Nothing (Just 8) Nothing)]<>)
-    tell $ Endo ([MOV tmp (VMem R12 Nothing (Just i) Nothing)]<>)
+    tell $ Endo ([MOV tmp (VMem R12 Nothing (Just id) Nothing)]<>)
     tell $ Endo ([MOV dest tmp]<>)
 generateExpr gd (NewObj s) i typ dest =
   do
@@ -449,9 +456,11 @@ generateDivide gd v1 v2 i =
     let medx = getRegisterFromValue v2
     when (medx == Just EDX) $
       tell $ Endo ([MOV (VReg EBX) (VReg EDX)]<>)
+    when (medx == Just EAX) $
+      tell $ Endo ([MOV (VReg EBX) (VReg EAX)]<>)
     tell $ Endo ([MOV (VReg EAX) v1]<>)
     tell $ Endo ([CDQ]<>)
-    if medx == Just EDX then
+    if medx == Just EDX || medx == Just EAX then
       tell $ Endo ([IDIV (VReg EBX)]<>)
     else if isConstantValue v2 then do
       tell $ Endo ([MOV (VReg EBX) v2]<>)
