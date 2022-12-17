@@ -240,7 +240,7 @@ getDeclTyp (Decl typ _ _) = Just typ
 getDeclTyp _ = Nothing
 
 -- Gets all string variables used in a given statement, including a newly
--- declared variable from a Decl stmt
+-- declared variable from a Decl stmt with function call
 getDeclAppVars :: Stmt -> [String]
 getDeclAppVars (Decl _ s e@FunApp {}) = s : getExprVars e
 getDeclAppVars (Decl _ s e@MetApp {}) = s : getExprVars e
@@ -310,7 +310,7 @@ instance Show Expr where
   show (Cast s v) = "(" ++ s ++ ") " ++ show v
   show (ArrAcs s v) = s ++ "[" ++ show v ++ "]"
   show (FunApp s args) = "FunApp " ++ s ++ " " ++ intercalate ", " (P.map show args)
-  show (MetApp s _ args) = "MetApp " ++ s ++ " " ++ intercalate ", " (P.map show args)
+  show (MetApp s i args) = "MetApp " ++ s ++ " " ++ show i ++ " " ++ intercalate ", " (P.map show args)
   show (Elem s i) = s ++ ".field[" ++ show i ++ "]"
   show (NewObj s) = "new " ++ s 
   show (NewString s) = "new (string) " ++ s
@@ -326,7 +326,7 @@ isRamExpr _ = False
 -- Gets all string variables used in a given expr
 getExprVars :: Expr -> [String]
 getExprVars (Cast _ v) = catMaybes [getValVar v]
-getExprVars (ArrAcs _ v) = catMaybes [getValVar v]
+getExprVars (ArrAcs s v) = s : catMaybes [getValVar v]
 getExprVars (FunApp _ vs) = Y.mapMaybe getValVar vs
 getExprVars (MetApp _ _ vs) = Y.mapMaybe getValVar vs
 getExprVars (Elem s _) = [s]
