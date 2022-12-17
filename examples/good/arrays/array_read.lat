@@ -1,5 +1,8 @@
 // Author: Tomasz Wysocki 277696
 int main() {
-    (new int[1])[0];
+    int[] arr = new int[2];
+    arr[0] = 1;
+    int i = arr[0];
+    printInt(i);
     return 0;
 }
