@@ -15,8 +15,8 @@ typedef struct Str {
 
 typedef struct Array {
   int32_t itemSize; // Holds the size of a single item of the array
-  void *items; // Pointer to the start of the array
   int32_t len; // Length of the array
+  void *items; // Pointer to the start of the array
 } Array; // Class for representing arrays
 
 typedef struct __attribute__((__packed__)) Type {
