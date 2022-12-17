@@ -109,7 +109,6 @@ putv id typ (Env varMap cs fs ret cc) = Env (M.insert id typ varMap) cs fs ret c
 defaultClasses :: [Class]
 defaultClasses = [
   Class Default (Ident "String") (Just (Ident "Object")) [
-      Method Default (TBool Default) (Ident "equals") [TClass Default (Ident "Object")],
       Method Default (TClass Default (Ident "String")) (Ident "concat") [TClass Default (Ident "String")],
       Method Default (TInt Default) (Ident "length") []
     ],
@@ -117,8 +116,8 @@ defaultClasses = [
       Method Default (TBool Default) (Ident "equals") [TClass Default (Ident "Object")]
     ],
   Class Default (Ident "Array") (Just (Ident "Object")) [
-      Attribute Default (Ident "length") (TInt Default),
       Attribute Default (Ident "items") (TClass Default (Ident "Object")),
+      Attribute Default (Ident "length") (TInt Default),
       Attribute Default (Ident "sizeOfItem") (TInt Default)
     ]
   ]

@@ -318,29 +318,8 @@ convertExpr (Abs.EString bnfc s) = Prim (toPos bnfc) (Str (toPos bnfc) (convertS
 -- Converts all special characters wrriten using double back slash to regular ascii characters
 convertString :: String -> String
 convertString [] = []
-convertString ('\\':'\\':cs) = '\\' : convertString cs
 convertString ('\\':'\"':cs) = '\"' : convertString cs 
-convertString ('\\':'\'':cs) = '\'' : convertString cs 
-convertString ('\\':'n':cs) = '\n' : convertString cs 
-convertString ('\\':'t':cs) = '\t' : convertString cs
-convertString ('\\':c:cs) = 
-  if isDigit c then
-    let (n, css) = findDigit (c:cs) in chr n : convertString css
-  else
-    '\\' : convertString (c:cs) 
-  where
-    findDigit cs = 
-      let numstr = digitTake cs []
-          num = read numstr :: Int
-          css = drop (length numstr) cs
-      in (num, css) 
-
-    digitTake (c:cs) acc = 
-      if isDigit c then
-        digitTake cs (c:acc)
-      else
-        reverse acc
-    digitTake _ acc = reverse acc 
+convertString ('\\':'\'':cs) = '\'' : convertString cs
 convertString (c:cs) = c : convertString cs
 
 isPrimExpr :: Ast.Expr -> Bool
@@ -505,7 +484,7 @@ getArthOperatorRes (Ast.Add _) i1 i2 = i1 + i2
 getArthOperatorRes (Ast.Sub _) i1 i2 = i1 - i2
 getArthOperatorRes (Ast.Mul _) i1 i2 = i1 * i2
 getArthOperatorRes (Ast.Div _) i1 i2 = i1 `div` i2
-getArthOperatorRes (Ast.Mod _) i1 i2 = mod i1 i2
+getArthOperatorRes (Ast.Mod _) i1 i2 = i1 `rem` i2
 getArthOperatorRes _ i1 _ = i1
 
 getRelOperatorRes :: Ord a => RAMOp -> a -> a -> Bool 
