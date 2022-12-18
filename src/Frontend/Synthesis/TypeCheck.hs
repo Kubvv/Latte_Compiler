@@ -493,10 +493,12 @@ checkInitTypes ((typ, Init pos id e):is) =
 --    add a cast to a subexpression if it's needed
 -- RetV: check if we expect a return here and if the expected return is 
 --    of type void
--- Cond: throw an error if any of the substatement is a declaration or when
---    the if condition is not of type bool, then typecheck the substatments
--- While: throw an error if the substatement is a declaration or when
---    the if condition is not of type bool, then typecheck the substatment
+-- Cond: throw an error when the if condition is not of type bool, 
+--    replace the substatements to empty if they were a declaration,
+--    then typecheck the substatments
+-- While: throw an error when the if condition is not of type bool, 
+--    replace the substatement to empty if it was a declaration,
+--    then typecheck the substatment
 -- ExprS: typecheck the subexpression
 checkStmtTypes :: Stmt -> TypeCheckMonad (Stmt, Env -> Env)
 checkStmtTypes (Empty pos) = return (Empty pos, id)
@@ -543,24 +545,21 @@ checkStmtTypes st@(RetV pos) =
       _ -> lift $ throwError (NoReturnValueException pos)
 checkStmtTypes (Cond pos e s1 s2) = 
   do
-    when (isDeclStmt s1) $
-      lift $ throwError (VarDeclarationAsBlockStmtException (getStmtPos s1))
-    when (isDeclStmt s2) $
-      lift $ throwError (VarDeclarationAsBlockStmtException (getStmtPos s2))
+    let mods1 = if isDeclStmt s1 then Empty (getStmtPos s1) else s1
+    let mods2 = if isDeclStmt s2 then Empty (getStmtPos s2) else s2
     (res, resType) <- checkExprTypes e
     unless (isBoolType resType) $
       lift $ throwError (NotBoolInConditionException pos resType)
-    (ress1, f1) <- checkStmtTypes s1
-    (ress2, f2) <- checkStmtTypes s2 
+    (ress1, f1) <- checkStmtTypes mods1
+    (ress2, f2) <- checkStmtTypes mods2 
     return (Cond pos res ress1 ress2, id)
 checkStmtTypes (While pos e s) = 
   do
+    let mods = if isDeclStmt s then Empty (getStmtPos s) else s
     (res, resType) <- checkExprTypes e
     unless (isBoolType resType) $
       lift $ throwError (NotBoolInConditionException pos resType)
-    when (isDeclStmt s) $
-      lift $ throwError (VarDeclarationAsBlockStmtException (getStmtPos s))
-    (ress, f) <- checkStmtTypes s
+    (ress, f) <- checkStmtTypes mods
     return (While pos res ress, id)
 checkStmtTypes (ExprS pos e) =
   do
