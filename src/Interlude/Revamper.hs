@@ -28,10 +28,10 @@ checkWrongSub (stmt@(Ass typ (LVar x) e) : stmts) =
   where spotted = getExprVars e
 checkWrongSub (stmt:stmts) = stmt : checkWrongSub stmts
 
--- Checks if a given varirable represented by a string appears anywhere
+-- Checks if a given varirable represented by a string doesn't appear anywhere
 -- in the given list of statments (excluding declarations)
-checkLaterAppearance :: [Stmt] -> String -> Bool
-checkLaterAppearance stmts x =
+noLaterAppearance :: [Stmt] -> String -> Bool
+noLaterAppearance stmts x =
   x `notElem` stmtVars
     where stmtVars = concatMap getStmtVars stmts
 
@@ -176,10 +176,10 @@ propagateStmts [] acc =
     let tmp = foldl (\a s -> getDeclAppVars s ++ a) [] reversedacc
     return $ filter (checkEarlierStmt tmp) reversedacc
 propagateStmts (Decl typ1 x1 e : Ass typ2 (LVar x2) (Value (VVar x3)) : stmts) acc
-  | x1 == x3 && checkLaterAppearance stmts x1 && checkNotWrongSub x1 =
+  | x1 == x3 && noLaterAppearance stmts x1 && checkNotWrongSub x1 =
     propagateStmts (Ass typ1 (LVar x2) e : stmts) acc
 propagateStmts (Decl typ1 x1 e : Decl typ2 x2 (Value (VVar x3)) : stmts) acc
-  | x1 == x3 && checkLaterAppearance stmts x1 && checkNotWrongSub x1 =
+  | x1 == x3 && noLaterAppearance stmts x1 && checkNotWrongSub x1 =
     propagateStmts (Decl typ1 x2 e : stmts) acc
 propagateStmts (Decl typ1 x1 (Value _) : Ass typ2 (LVar x2) e : stmts) acc | x1 == x2 =
   propagateStmts (Decl typ1 x1 e : stmts) acc
@@ -192,7 +192,7 @@ propagateStmts (Decl typ x e : stmts) acc =
           let rev = getVarName v
           when (checkLaterAssignment stmts rev) $ do
             store <- get
-            put $ putVal x v store
+            put $ putVal rev v store
           propagateStmts stmts (Decl typ x re : acc)
         else do
           store <- get
