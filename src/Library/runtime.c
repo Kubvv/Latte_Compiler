@@ -187,7 +187,7 @@ int8_t _String_equals(obj o1, obj o2) {
   }
   uint8_t *str1 = ((Str *)o1->data)->data;
   uint8_t *str2 = ((Str *)o2->data)->data;
-  return strcmp(str1, str2) == 0; //Think about u8_strcmp
+  return strcmp(str1, str2) == 0;
 }
 
 obj _String_concat(obj o1, obj o2) {
