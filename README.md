@@ -1,5 +1,5 @@
 # Latte_Compiler
-A Haskell written Complier for Latte language, done for compiler construction course. It will most likely compile to x86.
+A Haskell written Complier for Latte language, done for compiler construction course. It compiles to x86_64.
 ## Running the compiler
 
 You can compile and run the compiler using following commands:
@@ -28,10 +28,63 @@ There are three main folders inside the frontend part of the compiler:
     operations etc.) Typecheck is mainly responsible for checking program correctness as well as doing some
     minor changes in ast. Lastly there is an optimizer, which removes dead code and folds the constants.
 
-## (Planned) Extensions
+## Interlude structure & description
 ***
-I'm planning on doing the following extensions:
-- **Removing dead code and folding constants** 
+Interlude is a process done between the frontend and backend. Its main goal is to translate
+the Ast data structure into a Quadruples data structure and optimize the resulting code. It consist
+of two main files:
+- **Quadruples** \
+    Quadruples is the file responsible for translating the Ast to Quadruples data structure, which is
+    stored inside the QuadruplesData file.
+- **Revamper** \
+    Revamper is an Interlude's equivalent of Frontend's Optimizer - It focuses on enhancing the code
+    produced after Quadruples translation. It does so iteratively, by constantly running value propagation
+    and LCSE interchangeably, until reaching a fixed point.
+
+## Library
+***
+Library holds the implementation of pre-defined functions and methods. Other than that
+it also implements some helper functions, such as _new, which creates a new pointer, or
+_cast which performs the cast between the types. The whole library is written in C and
+it consists of two files: an implementation and a header file. After compilation, Library
+creates an execuable 'runtime' in lib directory.
+
+## Backend structure & description
+***
+Backend consists of five main files whose collective goal is to create an optimized X86_64 
+assembly code, compile it and link it with a runtime file in order create an executable.
+The files and their individual goals are as follows:
+- **Assembler** \
+    Assembler holds the data structures which closely resamble the nasm x86_64 code. It holds
+    all needed instructions, registers, and possible mnemonics arguments.
+- **LivenessCheck** \
+    LivenessCheck is responsible for calculating the sets of live varirables in between the block
+    statements. It also allows for transofrming the aforementiond sets into a set of variables and
+    their individual liveness range within the block. The liveness of a block is later needed for 
+    register allocation.
+- **RegisterAlloc** \
+    RegisterAlloc is mostly responsible for create a RegState data structure, which is used by
+    Generator for optimal register allocation.
+- **Generator** \
+    Generator is the central point of the backend - it translates a given quadruples code into
+    an assembler form. The generated code consists of 2 sections: .rodata, which holds classes definitions
+    and string definitions, and .text which has implementations of all user defined functions and methods. 
+    In .text the translation utilises LivenessCheck and RegisterAlloc for an optimal register allocation.
+    Externs to pre-defined functions and method as well as helper functions are located above .rodata.
+- **Extractor** \
+    Extractor is the final stage of the whole compiler. It translates the assembler code into a string form,
+    which is then copied to a .s file, compiled to a .o file and linked with the library runtime file to create
+    the x86_64 executable. 
+
+## Extensions & Optimisations
+***
+This compiler implements the following optimisations:
+- **Constatnt folding**
+- **Dead code elimination**
+- **Value Propagation & LCSE**
+- **Register allocation in x86_64 code**
+
+Also, it supports the following extensions:
 - **Arrays**
 - **Structs**
 - **Classes with inheritance**
@@ -39,9 +92,10 @@ I'm planning on doing the following extensions:
     
 ## Used tools and libraries
 ***
-Compiler uses BNFC as a grammar tool and alex + happy for parser generations.
-There aren't any unusual libraries in the code. Most of them are related to data structures 
-(Map, Set, List) or Monads (ExceptT, ReaderT, StateT, IO).
+Compiler uses BNFC as a grammar tool and alex + happy for parser generations. I use the
+Endo data structure from a haskell library Data.Monoid, which allows for more efficient
+Writer monad result concatenation. Besides that there aren't any unusual libraries used in the code. 
+Most of them are related to data structures (Map, Set, List) or Monads (ExceptT, ReaderT, StateT, IO).
 
 ## Pre-defined functions and classes
 ***    
@@ -56,3 +110,24 @@ There are also three pre-defined classes:
 - Object, which is a parent of all classes and has an 'equals' method,
 - Array, which is a class used for representing arrays - This class elements are immutable,
 - String, which is a class equivalent of string primitive type and has a 'concat' method.
+
+## BNFC conflicts
+***
+The grammar file defined in Frontend/Lang/ does not have any unwanted conficts. There are no
+reduce / reduce conflicts and 6 shift / reduce conflicts. List of the grammar conflicts:
+- |new Type \[Expr\]| and |new Type| (Array declaration and Class declaration) - 
+    Since the two productions have the same prefix, we want to shift to check whether there
+    is a size declaration part after the 'new' Type part.
+- |Expr6 \[Expr\]| and |Expr6 ( ListExpr)| and |Expr6 . Ident| and |(Ident) Expr6|
+    (Array access and Function call and Element access and Cast) -
+    Since the Expr folds to the left instead of to the right, all of these first three
+    productions have the same prefix, thus the shift is desirable to check what comes after
+    the expr, if anything because the cast does not have anything after itself. This problem
+    produces 3 shift \ reduce errors.
+- |Ident| and |(Ident) Expr6| (Expression variable and Cast) -
+    Again, the same prefix (besides the first open bracket) in both of these productions,
+    shift is desirable so that we check if there is an Expr6 after Ident.
+- |if (Expr) Stmt| and |if (Expr) Stmt else Stmt| (if and if else)-
+    Allowed conflict from the basic Latte grammar version.
+
+
