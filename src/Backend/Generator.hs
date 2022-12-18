@@ -117,6 +117,9 @@ generate prog =
 generateProgram :: Q.Program -> GeneratorMonad ()
 generateProgram (Q.Prog cls funs strs) =
   do
+    tell $ Endo ([Ext externClass]<>)
+    tell $ Endo ([Ext externHelper]<>)
+    tell $ Endo ([Ext externNonClass]<>)
     tell $ Endo ([Sec "rodata"]<>)
     mapM_ generateClass cls
     mapM_ generateString strs
@@ -332,7 +335,7 @@ generateExpr gd (MetApp s id vs) i typ dest =
     generateExpr gd (Value (VVar s)) i TRef (VReg RBX)
     nullCheck RBX
     tell $ Endo ([MOV (VReg R12) (VMem RBX Nothing Nothing Nothing)]<>)
-    tell $ Endo ([MOV (VReg R12) (VMem R12 Nothing (Just 12) Nothing)]<>) --TODO check if can be merged
+    tell $ Endo ([MOV (VReg R12) (VMem R12 Nothing (Just 12) Nothing)]<>)
     tell $ Endo ([MOV (VReg R12) (VMem R12 Nothing (Just (id * 8)) Nothing)]<>)
     generateCall gd (VReg R12) vs i typ dest
 generateExpr gd (Elem s id) i typ (VReg r) =

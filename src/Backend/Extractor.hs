@@ -15,15 +15,14 @@ import Assembler
 
 assemblerToString :: Program -> String
 assemblerToString (Prog stmts) = 
-  prolog ++ intercalate "\n" (map printStmt stmts)
-    where
-      prolog = "%include 'lib/runtime.ext'\n" --Include the externs from library (TODO think about removing this)
+  intercalate "\n" (map printStmt stmts)
 
 -- Converts the assembler statements into a string form
 printStmt :: AStmt -> String
 printStmt (Glo s) = "global " ++ s
 printStmt (Sec s) = "section ." ++ s
 printStmt (PutLab s) = s ++ ":"
+printStmt (Ext s) = "extern " ++ intercalate ", " s
 printStmt (MOV v1 v2) = concat ["  MOV ", show v1, ", ", show v2]
 printStmt (ADD v1 v2) = concat ["  ADD ", show v1, ", ", show v2]
 printStmt (SUB v1 v2) = concat ["  SUB ", show v1, ", ", show v2]

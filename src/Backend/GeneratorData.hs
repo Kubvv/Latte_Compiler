@@ -40,7 +40,11 @@ externNonClass = [
     "_printString",
     "_readInt",
     "_readString",
-    "_error",
+    "_error"
+  ]
+
+externHelper :: [String]
+externHelper = [
     "_new",
     "_cast",
     "_getarritemptr",
