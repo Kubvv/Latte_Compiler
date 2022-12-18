@@ -165,7 +165,7 @@ obj _readString() {
 
 int8_t _error() {
   if (err == NULL) {
-    err = "RuntimeException - Error function run";
+    err = "RuntimeException - Error function called";
   }
 
   fprintf(stderr, "%s\n", err);
