@@ -91,11 +91,8 @@ runOptimizer out prog cs =
 runInterTranslate :: String -> A.Program -> [T.Class] -> IO ()
 runInterTranslate out prog cs =
   do
-    putStrLn $ prnt 0 prog
     inter <- interTranslate prog cs
-    -- putStrLn $ show inter
     revampedInter <- revamp inter
-    -- putStrLn $ show revampedInter
     runAssemblyBuild out revampedInter
 
 runAssemblyBuild :: String -> S.Program -> IO ()
