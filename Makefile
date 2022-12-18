@@ -31,7 +31,6 @@ native_runtime: src/Library/runtime.h src/Library/runtime.c
 	gcc -O2 -c src/Library/runtime.c -o src/Library/runtime.o
 	mkdir -p lib
 	cp src/Library/runtime.o lib/runtime
-	cp src/Library/externs lib/runtime.ext 
 
 compiler: ./src/Main.hs ${synthesisSources} ${parserSources} ${interludeSources} ${backendSources}
 	ghc --make -isrc/Frontend/Parser:src/Frontend/Synthesis:src/Interlude:src/Backend ./src/Main.hs -o latc
