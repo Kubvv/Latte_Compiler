@@ -19,9 +19,7 @@ cabal.sandbox.config
 .stack-work/
 .bak
 *.info
-tester.sh
 newtester.sh
-goodtester.sh
 latc.exe
 latc
 cabal.project.local
