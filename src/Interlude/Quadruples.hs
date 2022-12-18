@@ -585,10 +585,7 @@ translateExpr (NotNeg _ (Neg _) e) =
     store <- get
     let typ = fromJust $ getType estr store
     quadVar <- getQuadVar typ
-    if isByteType typ then
-      tell $ Endo ([Q.Decl typ quadVar (Q.Ram Q.Sub (VConst $ Q.CByte 0) (VVar estr))]<>) --TODO maybe not needed
-    else
-      tell $ Endo ([Q.Decl typ quadVar (Q.Ram Q.Sub (VConst $ Q.CInt 0) (VVar estr))]<>)
+    tell $ Endo ([Q.Decl typ quadVar (Q.Ram Q.Sub (VConst $ Q.CInt 0) (VVar estr))]<>)
     return quadVar
 translateExpr (A.Ram pos (A.Add pos2) e1 (NotNeg pos3 (A.Neg pos4) e2)) =
   translateExpr (A.Ram pos (A.Sub pos2) e1 e2)

@@ -336,7 +336,8 @@ getExprVars (Ram _ v1 v2) = catMaybes [getValVar v1] ++ catMaybes [getValVar v2]
 getExprVars (Value v) = catMaybes [getValVar v]
 getExprVars _ = []
 
--- TODO?
+-- Check if a given subexpression can be replaced by a simpler
+-- subexpression in the LCSE algorithm
 notReplaceableExpr :: Expr -> Bool
 notReplaceableExpr Cast {} = False
 notReplaceableExpr NewString {} = False
