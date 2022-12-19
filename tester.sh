@@ -18,10 +18,13 @@ runCnt=0
 diffCnt=0
 failCnt=0
 compCnt=0
-for file in $1/*.lat; do
+for file in $1/*.lat $1/**/*.lat; do
     fileNoExt="${file%.*}"
     name="${file##*/}"
     noExt="${name%.*}"
+    if [[ $noExt == "*" ]]; then
+        continue
+    fi
     printf "\n${BLUE}TESTING: $noExt ${NC}\n"
     res="$(./latc $file -o ./tester/$noExt 2>&1)"
     if [[ $res =~ "OK" ]]; then
