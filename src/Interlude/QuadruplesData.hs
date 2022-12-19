@@ -263,7 +263,10 @@ getAssignmentStr (Decl _ s _) = [s]
 getAssignmentStr (Ass _ (LVar s) _) = [s]
 getAssignmentStr _ = []
 
---TODO ?
+-- This function checks whether a given statment requires an usage of
+-- additional registers. Accesing array item or class element always require
+-- those registers, and also they're helpful during a call when some arguments
+-- have to be put on the stack (length args > 6)
 isReferenceAssignment :: Stmt -> Bool
 isReferenceAssignment (Decl _ _ (FunApp _ args)) | length args > 6 = True
 isReferenceAssignment (Decl _ _ (MetApp _ _ args)) | length args > 6 = True
@@ -275,6 +278,8 @@ isReferenceAssignment (Ret _ (FunApp _ args)) | length args > 6 = True
 isReferenceAssignment (Ret _ (MetApp _ _ args)) | length args > 6 = True
 isReferenceAssignment _ = False
 
+-- Checks if a given statement contains a subexpression that
+-- requires a temporary register to store its value (R12)
 isReferenceExpr :: Stmt -> Bool
 isReferenceExpr (Decl _ _ e) = isMethodOrArrayExpr e
 isReferenceExpr (Ass _ _ e) = isMethodOrArrayExpr e
