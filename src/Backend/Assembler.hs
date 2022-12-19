@@ -57,9 +57,9 @@ data Register =
     RAX
   | EAX
   | AL
-  | RBX
-  | EBX
-  | BL
+  | RBX -- RBX and its smaller parts are used as the main 'temporary' register
+  | EBX -- they're used in many statements and expressions as a way of storing
+  | BL -- some temporary values not used outside of statement scope
   | RCX
   | ECX
   | CL
@@ -84,12 +84,13 @@ data Register =
   | R11
   | R11D
   | R11B
-  | R12
-  | R12D
-  | R12B
-  | R13
-  | R13D
-  | R13B
+  | R12  -- R12 and its smaller parts are used as temporary registers mainly for storing
+  | R12D -- a desination for a value of some subexpression. It also temporarily stores the results of
+  | R12B -- calls and is used to find the location of a method inside class vtable. Lastly
+         -- it is used as a default register during accessing a class attribute
+  | R13  -- R13 and its smaller parts are used as temporary registers when dealing
+  | R13D -- with getting an array item or class attribute. They're also used when
+  | R13B -- pushing memory values to stack
   | R14
   | R14D
   | R14B
@@ -100,6 +101,7 @@ data Register =
   | RSP
   deriving (Eq, Ord, Show)
 
+-- TODO seems like unmodifiable registers aren't really used
 modifiableRegisters :: [Register] -- Can be modified in the function
 modifiableRegisters = [RAX, RCX, RDX, RDI, RSI, R8, R9, R10, R11]
 
@@ -302,3 +304,8 @@ getRegisterFromValue _ = Nothing
 getMemTypeFromValue :: AVal -> Maybe Type
 getMemTypeFromValue (VMem _ _ _ mtyp) = mtyp
 getMemTypeFromValue _ = Nothing
+
+-- Get a register from an aval if the aval is register, otherwise return a default value
+getRegisterOrDefault :: AVal -> Register -> Register
+getRegisterOrDefault (VReg r) _ = r
+getRegisterOrDefault _ r = r
