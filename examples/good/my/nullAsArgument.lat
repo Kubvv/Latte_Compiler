@@ -14,6 +14,7 @@ int main() {
 
   int x = b(null);
   A y = null;
+  printInt(x);
 
   return 0;
 }
