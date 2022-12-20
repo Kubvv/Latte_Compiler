@@ -45,6 +45,6 @@ clean:
 	rm -f src/Frontend/Synthesis/*.o
 	rm -f src/Interlude/*.o
 	rm -f src/Backend/*.o
-	rm -f src/lib/*.o
+	rm -f src/Library/*.o
 	rm -f latc
 	rm -r lib
