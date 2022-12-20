@@ -64,7 +64,10 @@ The files and their individual goals are as follows:
     register allocation.
 - **RegisterAlloc** \
     RegisterAlloc is mostly responsible for create a RegState data structure, which is used by
-    Generator for optimal register allocation.
+    Generator for optimal register allocation in a block of a function or a method. RegState consists
+    of register ranges that describe what occupies the register at a given line, a value map which
+    describes where every variable used in the function is stored and a stack shift which says how
+    much the stack pointer needs to be shifted after placing arugments at the stack
 - **Generator** \
     Generator is the central point of the backend - it translates a given quadruples code into
     an assembler form. The generated code consists of 2 sections: .rodata, which holds classes definitions
