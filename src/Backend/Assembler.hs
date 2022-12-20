@@ -154,12 +154,6 @@ increase R12 = R12
 increase R13B = R13
 increase R13D = R13
 increase R13 = R13
-increase R14B = R14
-increase R14D = R14
-increase R14 = R14
-increase R15B = R15
-increase R15D = R15
-increase R15 = R15
 increase RBP = RBP
 increase RSP = RSP
 
@@ -189,10 +183,6 @@ shrink R12 TInt = R12D
 shrink R12 TByte = R12B
 shrink R13 TInt = R13D
 shrink R13 TByte = R13B
-shrink R14 TInt = R14D
-shrink R14 TByte = R14B
-shrink R15 TInt = R15D
-shrink R15 TByte = R15B
 shrink x TRef = x
 shrink reg typ = shrink (increase reg) typ -- Non 64 bit register shrink
 
@@ -222,10 +212,6 @@ getRegisterSize R12D = TInt
 getRegisterSize R12B = TByte
 getRegisterSize R13D = TInt
 getRegisterSize R13B = TByte
-getRegisterSize R14D = TInt
-getRegisterSize R14B = TByte
-getRegisterSize R15D = TInt
-getRegisterSize R15B = TByte
 getRegisterSize x = TRef
 
 
