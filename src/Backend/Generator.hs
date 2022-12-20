@@ -15,16 +15,20 @@ import RegisterAllocData
 import GeneratorData
 
 -- Pairs arguments of a function with the location of the argument 
--- in x86_64 (Either register or stack loction)
+-- in x86_64 (Either register or stack loction). The stack location is taken
+-- from the argument and updated accordingly
 addArgsLocations :: [Register] -> [(Type, String)] -> Integer -> ValMap
 addArgsLocations _ [] _ = []
 addArgsLocations (r:rs) ((typ,x):args) off = (x, [VReg $ shrink r typ]) : addArgsLocations rs args off
 addArgsLocations [] ((typ,x):args) off = (x, [VMem RBP Nothing (Just (off+8)) (Just typ)]) : addArgsLocations [] args (off + 8)
 
+-- Return a closest number (rounded up) to given i that is divisible by 16
+-- This function is used for determining stack alignment
 roundToDivider :: Integer -> Integer
 roundToDivider i | i `mod` 16 == 0 = i
 roundToDivider i = (16 - (i `mod` 16)) + i
 
+-- Boolean to integer conversion with a negation in between
 notBoolToInteger :: Bool -> Integer
 notBoolToInteger True = 0
 notBoolToInteger False = 1
@@ -39,45 +43,63 @@ modifyMemoryOffset c1 c2 (VMem r mr (Just off) typ) =
     VMem r mr (Just off) typ
 modifyMemoryOffset _ _ v = v
 
+-- Given a pair variable - locations that store that variable, create 
+-- a statement that moves the argument from its location to a register  
 movArgToReg :: (String, [AVal]) -> AStmt
 movArgToReg (s, vs) =
   MOV (fromJust $ getFirstRegister vs) (fromJust $ getFirstMemory vs)
 
-getLive :: Integer -> RegisterRange -> [String]
-getLive i range =
-  map (fromJust . getArrRangeRegister) singleLen
+-- For a given line number and all register ranges, find all variables
+-- that occupy some register in the given line
+findLiveVariable :: Integer -> RegisterRange -> [String]
+findLiveVariable i range =
+  map (fromJust . getArrRangeVar) singleLen -- Unpack variable names from ranges
   where
-    singleLen = filter (\l -> length l == 1) iInRange
-    iInRange = map (filterJustInRanges i) range
+    singleLen = filter (\l -> length l == 1) iInRange -- Remove free registers
+    iInRange = map (filterJustInRanges i) range -- Search in all registers
 
-getFreeOrDefaultRegister :: GeneratorData -> String -> Register -> Integer -> GeneratorMonad AVal
-getFreeOrDefaultRegister gd s r i =
+-- Get a storage location of a variable named s (prioritizing registers). If the variable
+-- was stored in a register, return that register, otherwise create a statement that
+-- moves the variable from other source to a default register which was given as argument
+-- and return that default register
+getFreeOrDefaultRegister :: GeneratorData -> String -> Register -> GeneratorMonad AVal
+getFreeOrDefaultRegister gd s r =
   do
     case getGeneratorAvalFromStr s gd of
       Just r2 | isRegisterValue r2 -> return r2
-      Just r2 -> do
-        generateExpr gd (Value (VVar s)) i TRef (VReg r)
-        return (VReg r)
-      Nothing -> do
-        generateExpr gd (Value (VVar s)) i TRef (VReg r)
+      Just av -> do
+        tell $ Endo ([MOV (VReg r) av]<>)
         return (VReg r)
 
+-- Given a line number and register ranges, get all registers
+-- that don't hold any alive variables at this code line number
 getFree :: Integer -> RegisterRange -> [Register]
 getFree i range =
   map fst iInRange
   where
     iInRange = filter (anyNothingInRanges i) range
 
-getStackChanges :: [AVal] -> ([AStmt], [AStmt])
-getStackChanges avs | even (length avs) = ([], [])
-getStackChanges _ = ([SUB (VReg RSP) (A.VConst 8)], [ADD (VReg RSP) (A.VConst 8)])
+-- Get the required stack shift instructions when the given list of assembly values has
+-- an odd number of elements (Stack pointer has to be aligned to 16 before a call)
+getStackShifts :: [AVal] -> ([AStmt], [AStmt])
+getStackShifts avs | even (length avs) = ([], [])
+getStackShifts _ = ([SUB (VReg RSP) (A.VConst 8)], [ADD (VReg RSP) (A.VConst 8)])
 
+-- Switches all 'old' register occurences in the register argument list to a 
+-- 'new' register, preserving the sizes of the old register
 switchRRegisters :: [(Register, AVal)] -> Register -> Register -> [(Register, AVal)]
 switchRRegisters rargs old new = map (switchRegister old new) rargs
 
+-- Switches all 'old' register occurences in the stack argument list to a 
+-- 'new' register, preserving the sizes of the old register.
 switchSRegisters :: [AVal] -> Register -> Register -> [AVal]
 switchSRegisters sargs old new = map (switchVRegister old new) sargs
 
+-- Push an argument to stack based on its assembly value type
+-- If it's a register, push a 64bit version of that register
+-- If it's a memory, use R13 register to temporarily store it,
+--    then push R13
+-- If it's anything else, just push the aval directly  
 argumentPush :: AVal -> GeneratorMonad ()
 argumentPush (VReg r) =
   do
@@ -90,22 +112,22 @@ argumentPush av =
   do
     tell $ Endo ([PUSH av]<>)
 
-getRegisterOrDefault :: AVal -> Register -> Register
-getRegisterOrDefault (VReg r) _ = r
-getRegisterOrDefault _ r = r
-
+-- Xor instruction on bools
 xor :: Bool -> Bool -> Bool
 xor True False = True
 xor False True = True
 xor _ _ = False
 
+-- Convert some basic escape codes so that they print correctly in the label string
 convertString :: String -> String -> String
 convertString [] acc = reverse acc
 convertString (s:ss) acc | s == '\n' = convertString ss ("n" ++ "\\" ++ acc)
 convertString (s:ss) acc | s == '\t' = convertString ss ("t" ++ "\\" ++ acc)
 convertString (s:ss) acc = convertString ss (s:acc)
 
-
+-- Main endpoint of Generator function, converts the whole quadruples program into
+-- an assembly program. It first runs the translation, then appends the writer statements
+-- using Endo and then cleans the program of unnecessary statements
 generate :: Q.Program -> IO A.Program
 generate prog =
   do
@@ -114,6 +136,11 @@ generate prog =
     let res = assemblyClear astmts
     return (A.Prog res)
 
+-- Generates the whole assembly program using Quadruples program
+-- It first generates required externs, then it generates the .rodata
+-- section which holds class definitions and string definitions
+-- and then it generates the .text section which has all functions
+-- and methods implemenations
 generateProgram :: Q.Program -> GeneratorMonad ()
 generateProgram (Q.Prog cls funs strs) =
   do
@@ -126,6 +153,13 @@ generateProgram (Q.Prog cls funs strs) =
     tell $ Endo ([Sec "text"]<>)
     mapM_ generateFunction funs
 
+-- Genertes a class definition in the .rodata section, including information such as:
+-- parent name (if it exists), size of all class attributes (based on their types),
+-- label that points to class methods, number of reference type attributes (Other objects
+-- as attributes of a class), label that points to class references (if needed).
+-- Later on a the class methods label is created, which lists all methods visible for 
+-- a given class, with virtual methods included. Then, if class has some reference attributes,
+-- the refs label which lists all reference indices in the attribute table of a class
 generateClass :: Q.Class -> GeneratorMonad ()
 generateClass (Cls x mx off attr met) =
   do
@@ -146,11 +180,6 @@ generateClass (Cls x mx off attr met) =
       tell $ Endo (map ((DD . A.VConst) . getAttributeOffset) refattr<>)
       where
         refattr = filter isAttributeReferenceType attr
-        parenName = fromMaybe "" mx
-        parenVal = if parenName == "" then
-                    A.VConst 0
-                   else
-                    VLab parenName
         refVal = if null refattr then
                   A.VConst 0
                  else
@@ -158,32 +187,55 @@ generateClass (Cls x mx off attr met) =
         methodsName = x ++ "_methods"
         refName = x ++ "_refs"
 
+-- Generates a string with a label in the .rodata section, previously
+-- modifying the escape codes in the string 
 generateString :: (String, String) -> GeneratorMonad ()
 generateString (lab, str) =
   do
     let modstr = convertString str []
     tell $ Endo ([A.PutLab lab, DBq (VLab modstr), DB (A.VConst 0)]<>)
 
+-- Generates a function in the .text section by generating its block contents
 generateFunction :: Function -> GeneratorMonad ()
 generateFunction (Fun x typ args stmts) =
   do
     generateBlock x args stmts
 
+-- Generates the block of a function by first calling the pre block generation
+-- function, then creates a GData object which is used later on by statements and 
+-- expressions, then generates the contents and after that generates the block epilog
 generateBlock :: String -> [(Type, String)] -> [Stmt] -> GeneratorMonad ()
 generateBlock x args stmts =
   do
     (shouldUseR12, shouldUseR13, newvm) <- generatePreBlock x rstate stmts
     let gd = GData x (putvm newvm rstate)
-    mapM_ (generateStmt gd) (zip [1..] stmts)
+    mapM_ (generateStmt gd) (zip [1..] stmts) -- Zip stmts with numbers for easier reference
     generateBlockEpilog x (shouldUseR12, shouldUseR13)
       where
-        livestmt = checkLiveness stmts
-        vm = generateArgs args
-        rstate = alloc vm args livestmt
+        livestmt = checkLiveness stmts -- Liveness analysis
+        vm = generateArgs args -- Basic ValMap with arguments stored
+        rstate = alloc vm args livestmt -- Here registers are allocated preemptively
 
+-- Creates a ValMap that stores the location of a given list of arguments
+-- As x86_64 requires, six first arguments are placed to the registers, rest
+-- is placed in memory on the stack
 generateArgs :: [(Type, String)] -> ValMap
 generateArgs args = addArgsLocations argumentRegisters args 32
 
+-- Generates the statements required by call protocol before the statement generation
+-- Generate the required global and function label, then push RBP pointer and RBX work registers
+-- to preserve them.
+-- Check if R12 or R13 registers will be required in the following statements and
+-- push those registers that will be (As R12 and R13 should retain their values)
+-- Move the RSP to RBP (protocol)
+-- Create an offset generated by pushing R12 and R13 (non-zero if exactly one was pushed)
+-- Then, shift the RSP register based on generated offset and stack top information 
+-- from Register State
+-- After that modify the memory values stored in current ValMap so that they reflect the
+-- R12 and R13 register pushing
+-- Lastly create statements for moving arguments from stack to registers based on information
+-- from Register State
+-- Return the R12 and R13 bool usage and modified ValMap
 generatePreBlock :: String -> RegisterState -> [Stmt] -> GeneratorMonad (Bool, Bool, ValMap)
 generatePreBlock x (RegState ranges vm stc) stmts =
   do
@@ -194,7 +246,7 @@ generatePreBlock x (RegState ranges vm stc) stmts =
     let refAss = any isReferenceAssignment stmts
     let refExpr = any isReferenceExpr stmts
     let shouldUseR12 = refAss || refExpr
-    let shouldUseR13 = refAss --TODO better name?
+    let shouldUseR13 = refAss
     when shouldUseR12 $
       tell $ Endo ([PUSH (VReg R12)]<>)
     when shouldUseR13 $
@@ -214,6 +266,12 @@ generatePreBlock x (RegState ranges vm stc) stmts =
     tell $ Endo (map movArgToReg argsToRegister<>)
     return (shouldUseR12, shouldUseR13, modvm)
 
+-- Generates the protocol for after the block execution. This protocol includes:
+-- Creating a label that returns can use to jump to the function end
+-- Restores the RSP value back
+-- Pops the R13 and R12 if they were used in the block
+-- Pops the RBX and RBP registers stored on stack in pre protocol
+-- Puts a ret mnemonic
 generateBlockEpilog :: String -> (Bool, Bool) -> GeneratorMonad ()
 generateBlockEpilog x (shouldUseR12, shouldUseR13) =
   do
@@ -227,6 +285,37 @@ generateBlockEpilog x (shouldUseR12, shouldUseR13) =
     tell $ Endo ([POP (VReg RBP)]<>)
     tell $ Endo ([RET]<>)
 
+-- Generates a set of assembly statements that correspond to a single
+-- quadruples statement
+-- Decl: Find all locations that should store a given variable (based on RegisterAlloc
+--    calculations), then if some locations were found and one of them is a register,
+--    check if the variable needs to be stored in a register at the next instruction, if
+--    yes, then generate the subexpression and store its result in that register,
+--    otherwise if it isn't needed in a register, generate the subexpression and store
+--    its result in RBX, otherwise if the variable should be saved in the memory and
+--    not register, generate the subexpression and store its value in the memory,
+--    otherwise if the variable does not have any appointed locations, move it to
+--    RBX teporary register
+-- Ass (LVar): Do the same steps as in Decl case
+-- Ass (LArr): calculate the subexpression (RVal) and store the result in R12,
+--    then call getArrItemPointer function to receive the address of the array at
+--    the given index and store that address in R13, then move the result stored in R12
+--    to memory location at R13
+-- Ass (LElem): calculate the subexpression (RVal) and store the result in R12,
+--    then, if possible, move the object to temporary register R12 if needed,
+--    then check if the address stored in that register is not null, then
+--    access the variable table and get the attribute of the object using the register R13
+--    and move the result stored in R12 to that attribute 
+-- Ret: Generate the subexpression and store its result in RAX, then jump
+--    to the function end label (protocol)
+-- RetV: Jump to the function end label (protocol)
+-- Jmp: Jump to the label with a given name
+-- JmpCond: Generate the value of compared arguments, If both are memory location,
+--    move one of it to a temporary register RBX and generate the condition for RBX
+--    and the other address, else if a const is compared with memory or register then
+--    swap the arguments and the relational operator (for easier generation of the condition) 
+--    else generate the condition normally with two previously generated values 
+-- PutLab: Put a label with a given name
 generateStmt :: GeneratorData -> (Integer, Stmt) -> GeneratorMonad ()
 generateStmt gd (i, Decl typ s e) =
   do
@@ -237,7 +326,7 @@ generateStmt gd (i, Decl typ s e) =
         let anyReg = filter isRegisterValue x
         let dest = case anyReg of
                     [] -> head x
-                    (r:_) -> if s `elem` getLive (i+1) (range (rstate gd)) then r else vr
+                    (r:_) -> if s `elem` findLiveVariable (i+1) (range (rstate gd)) then r else vr
         generateExpr gd e i typ dest
       Nothing ->
         generateExpr gd e i typ vr
@@ -250,7 +339,7 @@ generateStmt gd (i, Ass typ (LVar x) e) =
         let anyReg = filter isRegisterValue v
         let dest = case anyReg of
                     [] -> head v
-                    (r:_) -> if x `elem` getLive (i+1) (range (rstate gd)) then r else vr
+                    (r:_) -> if x `elem` findLiveVariable (i+1) (range (rstate gd)) then r else vr
         generateExpr gd e i typ dest
       Nothing ->
         generateExpr gd e i typ vr
@@ -265,7 +354,7 @@ generateStmt gd (i, Ass typ (LElem x off) e) =
     let shrinked = shrink R12 typ
     let tmp = R13
     generateExpr gd e i typ (VReg shrinked)
-    reg <- getFreeOrDefaultRegister gd x tmp i
+    reg <- getFreeOrDefaultRegister gd x tmp
     let r = fromJust $ getRegisterFromValue reg
     nullCheck r
     tell $ Endo ([MOV (VReg R13) (VMem r Nothing (Just 0x08) Nothing)]<>)
@@ -297,6 +386,10 @@ generateStmt _ (_, Q.PutLab s) =
   do
     tell $ Endo ([A.PutLab s]<>)
 
+-- Generates a jump condition statements based on the operator and compared arguments
+-- If the operator is equality operator and a value is compared with 0, compare
+-- using test mnemonic, otherwise compare using cmp mnemonic, then jump using
+-- appropiate type based on operator
 generateJmpCond :: RelOp -> String -> AVal -> AVal -> GeneratorMonad ()
 generateJmpCond op s av1 (A.VConst i) | isEquNeq op && i == 0 =
   do
@@ -309,7 +402,51 @@ generateJmpCond op s av1 av2 =
     let jumpType = generateJumpType op s
     tell $ Endo ([jumpType]<>)
 
-
+-- Generates the set of assembly statements that correspond to a single
+-- quadruples expression
+-- Cast: call the library cast function and save its result to destination register
+-- ArrAcs (To register): call the library function to get the address of item from 
+--    array s at index id and store the result in temporary register R12, then move 
+--    the value at address R12 to the destination register
+-- ArrAcs (To memory): Do the same steps, but to move the value to destination
+--    use the temporary regsiter RBX (shrinked to type) to save the value later
+--    in the memory
+-- FunApp: Call the function, but if it was a default function add the "_" prefix
+--    (denoting library function) 
+-- MetApp: Move the object address to RBX register and then check if that address is not null
+--    then use the R12 temporary register to access the object address, its methods, and then
+--    the method address at index id
+-- Elem (To register): If object is not stored in the register, move it temporarily to R12 register
+--    then get the register that stores the object and check if it's not null, then access the attribute
+--    at the attribute table of the object and move the result to the destination register
+-- Elem (To memory): Do the same steps, but to move the value to destination
+--    use the temporary regsiter RBX (shrinked to type) to save the value later
+--    in the memory
+-- NewObject, NewArray, NewString: Call the library functions that create the objects and return
+--    their pointers. If it is a new array, create an array using a special method to denote
+--    the size of each specific element
+-- Not (VConst): Negate the boolean value and store it to a given destination. If the destination is a
+--    register, shrink the register to boolean (8bit) type
+-- Not (VVar): Get the to negate value using ValMap and if it is not in the register, move it
+--    to temporary register BL, then if the destination is a register, move the value to that
+--    register and negate the value using test and setz mnemonics, otherwise just use the test 
+--    mnemonic on the original register and setz mnemonic on the destination
+-- Ram (Div / Mod): Generate the assembly values for arguments of the operator, then
+--    perform the divide using the generateDivide function, then move the result (either
+--    EAX or EDX) to the temporary register EBX, pop the stored arguments and then put
+--    the result to the destination
+-- Ram (Other): Generate the assembly values for arguments of the operator, then
+--    move the first value to the RBX register, then perform the addition and
+--    move the result from RBX to the destination
+-- Value (Const and to register): Move the const to the destination register, shrinked to
+--    appropiate type of the const. If the const is a null, xor the destination register
+-- Value (Const and to memory): Do the same as above, but use the temporary register RBX to
+--    perform operations and then move the value from RBX to destination
+-- Value (Other): If destination and a source are both registers, perform a normal Mov
+--    with a shrinked destination register based on the type of the value, if one of
+--    the source, destination pair is a register, do a normal Mov mnemonic, and if
+--    both the source and destination are memory addresses, use the RBX temporary register
+--    shrinked appropiatly to the type to perform the Mov statement 
 generateExpr :: GeneratorData -> Expr -> Integer -> Type -> AVal -> GeneratorMonad ()
 generateExpr gd (Cast s v) i typ dest =
   do
@@ -340,7 +477,7 @@ generateExpr gd (MetApp s id vs) i typ dest =
     generateCall gd (VReg R12) vs i typ dest
 generateExpr gd (Elem s id) i typ (VReg r) =
   do
-    reg2 <- getFreeOrDefaultRegister gd s R12 i
+    reg2 <- getFreeOrDefaultRegister gd s R12
     let r2 = fromJust $ getRegisterFromValue reg2
     nullCheck r2
     tell $ Endo ([MOV (VReg R12) (VMem r2 Nothing (Just 8) Nothing)]<>)
@@ -348,7 +485,7 @@ generateExpr gd (Elem s id) i typ (VReg r) =
 generateExpr gd (Elem s id) i typ dest =
   do
     let tmp = VReg (shrink RBX typ)
-    reg2 <- getFreeOrDefaultRegister gd s R12 i
+    reg2 <- getFreeOrDefaultRegister gd s R12
     let r2 = fromJust $ getRegisterFromValue reg2
     nullCheck r2
     tell $ Endo ([MOV (VReg R12) (VMem r2 Nothing (Just 8) Nothing)]<>)
@@ -410,10 +547,10 @@ generateExpr gd (Ram op v1 v2) i typ dest =
   do
     let modv1 = generateValue gd v1
     let modv2 = generateValue gd v2
-    let moddest = shrink RBX typ
-    tell $ Endo ([MOV (VReg moddest) modv1]<>)
-    tell $ Endo ([generateArth op (VReg moddest) modv2]<>)
-    tell $ Endo ([MOV dest (VReg moddest)]<>)
+    let tmp = shrink RBX typ
+    tell $ Endo ([MOV (VReg tmp) modv1]<>)
+    tell $ Endo ([generateArth op (VReg tmp) modv2]<>)
+    tell $ Endo ([MOV dest (VReg tmp)]<>)
 generateExpr _ (Value (Q.VConst x)) i typ dest@(VReg r) =
   do
     case x of
@@ -451,7 +588,12 @@ generateExpr gd (Value (Q.VVar x)) i _ dest =
           tell $ Endo ([MOV (VReg (shrink RBX typ)) av]<>)
           tell $ Endo ([MOV dest (VReg (shrink RBX typ))]<>)
 
-
+-- Generates a division statement, using the following steps:
+-- First a pre devide set of statement is generated
+-- Then if the divisor is stored in a reserved register, move it to RBX
+-- Then do the divide protocol, move the value to RAX, do CDQ, and divide
+-- using an appropiate register (if the divisor is const, move it to EBX first)
+-- Then use the after statements generated by pre divide function
 generateDivide :: GeneratorData -> AVal -> AVal -> Integer -> GeneratorMonad [AStmt]
 generateDivide gd v1 v2 i =
   do
@@ -472,6 +614,10 @@ generateDivide gd v1 v2 i =
       tell $ Endo ([IDIV v2]<>)
     return after
 
+-- Generates pre divide safety measures, which are just pushing the
+-- RAX and RDX registers if they aren't free (some alive variable occupies them)
+-- This function returns the after divide statements, which are Pop statements that
+-- should be called after the division
 generatePreDivide :: [Register] -> GeneratorMonad [AStmt]
 generatePreDivide fReg =
   do
@@ -482,6 +628,14 @@ generatePreDivide fReg =
     return popStmts
 
 
+-- Generate call is the main function for generating a function or a method call
+-- It first generates the pre call protocol and moves the arguments to their desired
+-- locations. Then the mnemonic call is used along the function or method name,
+-- then after the call the protocol is used once again to:
+-- restore original RSP pointer,
+-- move the result to temporary register RBX,
+-- pop all previously pushed arguments,
+-- moving the value from RBX to a desired location (desired location comes from caller)
 generateCall :: GeneratorData -> AVal -> [Val] -> Integer -> Type -> AVal -> GeneratorMonad ()
 generateCall gd f args line typ dest =
   do
@@ -498,17 +652,38 @@ generateCall gd f args line typ dest =
     else
       tell $ Endo ([MOV dest (VReg (shrink RBX typ))]<>)
 
+-- Generate the pre call safety measures, which incude pushing all registers
+-- that held a live variable and createing the stack alignment statement if necessary
+-- (Stack has to be aligned to 16 before call). This function also creates the after 
+-- call statements, which are Pop statements and stack alignment reverse statement
+-- that should be called after the call 
 generatePreCall :: [Register] -> GeneratorMonad [AStmt]
 generatePreCall fReg =
   do
     let vTReg = map VReg (modifiableRegisters \\ fReg)
-    let (stackin, stackout) = getStackChanges vTReg
+    let (stackin, stackout) = getStackShifts vTReg
     let pushStmts = map PUSH vTReg
     let popStmts = map POP (L.reverse vTReg)
     tell $ Endo (stackin<>)
     tell $ Endo (pushStmts<>)
     return (popStmts ++ stackout)
 
+-- Generates all statements required to move all function arguments to their desired place
+-- This function has two possible modes: moving arguments to register and pushing arguments
+-- to the stack. Register mode is active for the first six arguments
+-- In register mode, if the value is already in a correct register, skip the argument, 
+-- otherwise if it in a wrong register, move it directly if the destination register
+-- is free (doesn't have any variable needed later on in protocol), otherwise
+-- swap the source and destination registers values using RBX temporary register. 
+-- Denote the swap information for the rest of arguments as some of them might
+-- need to know that their value's source was changed.
+-- Finally if the value is not in the register, move it to destination
+-- if the destination is free, otherwise allow other args to be moved earlier,
+-- in order to free the destination register. 
+-- In stack mode the RSP is moved to RBX (to preserve the original stack pointer)
+-- and then arguments are pushed to stack using argumentPush function and 
+-- temporary register R13.
+-- If there were no arguments create an extra statement for moving RSP to RBX
 generateCallArgs :: [Register] -> [(Register, AVal)] -> [AVal] -> GeneratorMonad ()
 generateCallArgs _ [] [] =
   do
@@ -538,7 +713,7 @@ generateCallArgs _ [] sargs =
     tell $ Endo ([MOV (VReg RBX) (VReg RSP)]<>)
     mapM_ argumentPush sargs
 
-
+-- Generates an assembly value based on a Quadruples value
 generateValue :: GeneratorData -> Val -> AVal
 generateValue _ (Q.VConst (CInt i)) = A.VConst i
 generateValue _ (Q.VConst (CByte i)) = A.VConst i
@@ -546,6 +721,8 @@ generateValue _ (Q.VConst (CStr s)) = VLab s
 generateValue _ (Q.VConst CNull) = A.VConst 0
 generateValue gd (Q.VVar s) = fromJust $ getGeneratorAvalFromStr s gd
 
+-- Generates the jump to a given label with appropiate type based on 
+-- relative operator used
 generateJumpType :: RelOp -> String -> AStmt
 generateJumpType Lt s = JL (VLab s)
 generateJumpType Le s = JLE (VLab s)
@@ -554,6 +731,8 @@ generateJumpType Neq s = JNE (VLab s)
 generateJumpType Gt s = JG (VLab s)
 generateJumpType Ge s = JGE (VLab s)
 
+-- Generates an arithmetic instruction based on the binary operator and
+-- its two assembly value arguments (excluding div and mod)
 generateArth :: Op -> AVal -> AVal -> AStmt
 generateArth Add v1 v2 = ADD v1 v2
 generateArth Sub v1 v2 = SUB v1 v2
@@ -561,6 +740,10 @@ generateArth Mul v1 v2 = IMUL v1 v2
 generateArth And v1 v2 = AND v1 v2
 generateArth Or v1 v2 = OR v1 v2
 
+-- Checks if a given register holds some pointer and not null (denoted as 0)
+-- nullCheck is usually used when accessing method or attribute of some class
+-- When the null is detected, a library function _null_err is called which
+-- throws a runtime exception, otherwise it is skipped
 nullCheck :: Register -> GeneratorMonad ()
 nullCheck r =
   do
@@ -568,28 +751,41 @@ nullCheck r =
     tell $ Endo ([JNZ (VLab "$+7")]<>) -- Skip one 4 byte instruction
     tell $ Endo ([CALL (VLab "_null_err")]<>)
 
+
+-- Conditions for clearing assembly statements
+ 
+-- Both or all three values are temporary register RBX
 isTempAndEqual :: AVal -> AVal -> Maybe AVal -> Bool
 isTempAndEqual av1 av2 Nothing = isTemporaryRegister av1 && av1 == av2
 isTempAndEqual av1 av2 (Just av3) = isTemporaryRegister av1 && av1 == av2 && av1 == av3
 
+-- Both values are stack pointer register RSP
 isStackAndEqual :: AVal -> AVal -> Bool
 isStackAndEqual av1 av2 = isStackRegister av1 && av1 == av2
 
+-- First three values are temporary registers and the rest are equal register values
 isTempAndEqualArth :: AVal -> AVal -> AVal -> AVal -> AVal -> Bool
 isTempAndEqualArth av1 av2 av3 arth1 arth2 =
   isTempAndEqual av1 av2 (Just av3) && isRegisterValue arth1 && arth1 == arth2
 
+-- First three values are temporary registers and the rest are not equal register values
 isTempAndNotEqualArth :: AVal -> AVal -> AVal -> AVal -> AVal -> Bool
 isTempAndNotEqualArth av1 av2 av3 arth1 arth2 =
   isTempAndEqual av1 av2 (Just av3) && isRegisterValue arth1 && arth1 /= arth2
 
-
+-- Clears a given list of statemnts of unnecessary opearations, 
+-- optimizing the generated code
 assemblyClear :: [AStmt] -> [AStmt]
-assemblyClear stmts = final
-  where
-    cstmts = clearStmts stmts
-    final = clearStack cstmts
+assemblyClear = clearStack . clearStmts
 
+-- Optimizes the following assembly statements:
+-- Moving value to the same location
+-- Double moving with swapped values - replaced with a single move
+-- Moving values using temporary register, when one of src and dest is a register
+-- Jumping to label that is right after another label
+-- Jumping to label right after the jump
+-- Moving values to temporary registers during an arithmetic operation
+-- Moving value to temporary register before cmp
 clearStmts :: [AStmt] -> [AStmt]
 clearStmts [] = []
 clearStmts (MOV x1 x2 : stmts)
@@ -636,6 +832,7 @@ clearStmts (MOV x1 y1 : CMP x2 z1 : stmts)
     clearStmts (CMP y1 z1 : stmts)
 clearStmts (stmt:stmts) = stmt : clearStmts stmts
 
+-- Iteratively clears stack until a fixed point is reached
 clearStack :: [AStmt] -> [AStmt]
 clearStack stmts =
   if modstmts == stmts then
@@ -645,6 +842,10 @@ clearStack stmts =
   where
     modstmts = clearStackStmts stmts
 
+-- Clears unnecessary operations regarding stack pointer usage:
+-- Not needed preserving of the stack pointer in temporary register 
+-- Addition and subtraction of pointer with same value 
+-- Double subtraction of RSP pointer
 clearStackStmts :: [AStmt] -> [AStmt]
 clearStackStmts [] = []
 clearStackStmts (MOV x1 y1 : CALL f : MOV y2 x2 : stmts)

@@ -91,17 +91,10 @@ data Register =
   | R13  -- R13 and its smaller parts are used as temporary registers when dealing
   | R13D -- with getting an array item or class attribute. They're also used when
   | R13B -- pushing memory values to stack
-  | R14
-  | R14D
-  | R14B
-  | R15
-  | R15D
-  | R15B
   | RBP
   | RSP
   deriving (Eq, Ord, Show)
 
--- TODO seems like unmodifiable registers aren't really used
 modifiableRegisters :: [Register] -- Can be modified in the function
 modifiableRegisters = [RAX, RCX, RDX, RDI, RSI, R8, R9, R10, R11]
 

@@ -11,11 +11,15 @@ import QuadruplesData
 
 type GeneratorMonad = WriterT (Endo [AStmt]) IO
 
+-- GeneratorData groups the most important information that is used throughout
+-- the whole generation process. The GeneratorData isn't changed after initialization
 data GeneratorData = GData {
-  funName :: String,
-  rstate :: RegisterState
+  funName :: String, -- Name of a function we're currently in
+  rstate :: RegisterState -- Information about register allocation and places that store variables,
+                          -- initialized by RegisterAlloc file
 }
 
+-- Get a location that stores a given variable named s, prioritizing registers over memory
 getGeneratorAvalFromStr :: String -> GeneratorData -> Maybe AVal
 getGeneratorAvalFromStr s (GData _ (RegState _ vm _)) =
   case L.lookup s vm of
@@ -25,6 +29,7 @@ getGeneratorAvalFromStr s (GData _ (RegState _ vm _)) =
         (r:_) -> Just r
     Nothing -> Nothing
 
+-- Pre-defined functions that can be called by user
 defaultNonClassFunctions :: [String]
 defaultNonClassFunctions = [
     "printInt",
@@ -34,6 +39,7 @@ defaultNonClassFunctions = [
     "error"
   ]
 
+-- All pre-defined functions and methods grouped for extern instructions
 externNonClass :: [String]
 externNonClass = [
     "_printInt",
