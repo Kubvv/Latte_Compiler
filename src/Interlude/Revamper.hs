@@ -155,7 +155,7 @@ propagateFunction (Fun x typ args stmts) =
 --    Declaring a variable that is only being used once in the next statment assignment,
 --    Declaring a variable that is only being used once in the next statement declaration,
 --    Declaring a variable and instantly changing its value with an assignment
---    After the cleanup we evaluate the subexrpession and if it returns a variable,
+--    After the cleanup we evaluate the subexpression and if it returns a variable,
 --    we check if it used anywhere later on and if it is, we save the declared variable and its value
 --    to the store, otherwise if it's not a variable we just save the declared variable and its value
 --    to the store, otherwise if the calculation of subexrpession did not return a value, just move on

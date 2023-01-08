@@ -10,20 +10,17 @@ import Control.Monad.State
 import Control.Monad.Writer
 
 {- QuadruplesData holds all data structures used by quadruple and other backend classes
- - It contains the QuadStore which is used as an state in quadruple file, Monad
+ - It contains the QuadStore which is used as a state in quadruples file, monad
  - declaration types and most importantly the definition of the quadruple data
  - structure that we want to translate our Ast tree into
- - Note that the quadruple used in this compiler is not a complete one -
- - for instance it doesn't have a phi function
  - The main purpose of the inter translation is to:
  - 1. break down blocks, ifs and whiles into a set of jumps comparisons and labels,  
- - 2. linearize the ast tree structure 
- - 3. follow the one variable - one assignment policy -}
+ - 2. linearize the ast tree structure -}
 
 
 -- QuadStore holds crucial information used during translation between Ast and Quadruples
 data QuadStore = QStore {
-  varMap :: Map String String, -- Holds a mapping between an old ast variable name and a new quad variable
+  varMap :: Map String String, -- Holds a mapping between an old ast variable name and a new quad variable name
   typeMap :: Map String Type, -- Holds a mapping between a quad variable and its type
   strMap :: Map String String, -- Holds a mapping between string literals and auto-generated labels for them
   funs :: [Function], -- Holds all defined functions of the input file
@@ -125,7 +122,7 @@ type TranslateMonad = StateT QuadStore IO
 -- It uses Endo to avoid concatenating all statetments using regular '++' 
 type BuildMonad = WriterT (Endo [Stmt]) (StateT QuadStore IO)
 
--- quadruple data structure --
+-- Quadruple data structure --
 
 -- Program is converted into a set of three distinguishable "types"
 -- Class list defines all (including pre defined) class attributes and methods
@@ -134,7 +131,7 @@ type BuildMonad = WriterT (Endo [Stmt]) (StateT QuadStore IO)
 --    Functions contains all the code of .text section required
 -- Strings list contains a mapping from string literals into labels that define them in .rodata
 --    Labels (second) and strings (first) are going to be defined in .rodata
-data Program = Prog [Class] [Function] [(String, String)] -- Classes + Functions +  String Labels
+data Program = Prog [Class] [Function] [(String, String)] -- Classes + Functions + String Labels
   deriving (Eq, Ord)
 
 instance Show Program where
@@ -148,8 +145,8 @@ instance Show Program where
 -- String s - Name of the class
 -- Maybe String ms - Name of the parent class (if exists)
 -- Integer i - Offset created by summing sizes of attribute types (Starting point of functions)
--- [(String, Type, Integer)] fs - Class attributes described with name, their type and offset
---     Offset is based on previous attribute offsets
+-- [(String, Type, Integer)] fs - Class attributes described with name, their type and their index in
+--     attribute table - index is based on previous attribute offsets
 -- [String] ss - Class methods described by their name (modified with added prefix of class name)
 data Class = Cls String (Maybe String) Integer [(String, Type, Integer)] [String]
   deriving (Eq, Ord)
@@ -206,11 +203,11 @@ getFunctionType (Fun _ t _ _) = t
 
 -- Stmt data is a quadruples equivalent to Ast stmt data type. Types are required in quadruples
 -- statements as we want to know their sizes when we assign registers to them
--- quadruple Stmt only contains statments allowed by quadruple - it doesn't have
+-- Quadruple Stmt only contains statments allowed by quadruples - it doesn't have
 -- loops, ifs, blocks etc. Everything is replaced by a Declaration
 -- Assignment and Returns, and rest of the more complex ast stmt structures
 -- are converted into a set of control statements of Jump, Jump with condition
--- and labels
+-- and Labels.
 data Stmt =
     Decl Type String Expr -- declaration of an expression to a new variable (String) of type (Type)
   | Ass Type LType Expr -- assignment of an expression to a correct ltype

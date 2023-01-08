@@ -20,7 +20,7 @@ import Position
  - why i'm doing it can be found in QuadruplesData main comment -}
 
 -- Divides the elements of a class into two lists of attributes and methods
--- In order for types to match with the quadruple types, we add an default offset of 0 to
+-- In order for types to match with the quadruple types, we add a default offset of 0 to
 -- attributes and cut the methods to only their names
 divideElems :: [T.Element] -> [(String, Q.Type, Int)] -> [String] -> ([(String, Q.Type, Int)], [String])
 divideElems [] accAtr accMet = (accAtr, accMet)
@@ -165,8 +165,8 @@ findMethodInClass x (m:ms) i =
 interTranslate :: A.Program -> [T.Class] -> IO Q.Program
 interTranslate prog cs = evalStateT (translateProgram prog cs) Q.emptyStore
 
--- Translate the program by translating classes and functions, then
--- add all mapped const strings that were encountered during translation
+-- Translate the program by translating classes and functions, then by
+-- adding all mapped const strings that were encountered during translation
 translateProgram :: A.Program -> [T.Class] -> TranslateMonad Q.Program
 translateProgram (A.Program _ defs) cs =
   do
@@ -274,7 +274,7 @@ translateClass cs (Class _ (Ident x) (Just (Ident px)) es) =
     return newClass
 
 -- Translates function arguments and its statements to quadruple form
--- After translation the reulting arguments and statements are saved
+-- After translation the resulting arguments and statements are saved
 -- by modyfing the function in the store's function list
 translateFunction :: String -> [A.Arg] -> A.Block -> TranslateMonad ()
 translateFunction x args b =
@@ -287,7 +287,7 @@ translateFunction x args b =
     let modfuns = modifyFunction funcs x modargs modstmts
     put $ putFunctions modfuns store
 
--- Translates the argument type and creates a new quadruple varirable for
+-- Translates the argument type and creates a new quadruple variable for
 -- each argument in the list, returns the modified list
 translateArgs :: [A.Arg] -> TranslateMonad [(Q.Type, String)]
 translateArgs [] = return []
@@ -338,7 +338,7 @@ translateBlock (A.Block _ stmts) =
   do
     mapM_ translateStmt stmts
 
--- Translates ast statements into quadruple statements using writerT monad
+-- Translates ast statements into quadruple statements using WriterT monad
 -- Empty: pass
 -- BlockS: go to translateBlock
 -- Decl: map the translation of declarations
@@ -430,7 +430,7 @@ translateStmt (ExprS _ e) =
 --   the right expression normally
 -- If expression is an or, translate the left condition with a true bool (so it jumps when if it's true), replacing l2 with
 --   a special unique label that points at the evaluation of the right value, then translate the right value
--- If nothing applies, just do a regular expression evaluation and quadruple var extraction, and then create an condition
+-- If nothing applies, just do a regular expression evaluation and quadruple var extraction, and then create a condition
 --   of being equal or not equal to 0 according to the bool value
 translateCond :: Bool -> A.Expr -> String -> String -> BuildMonad ()
 translateCond b (A.NotNeg _ (A.Not _) e) l1 l2 =
@@ -479,7 +479,7 @@ translateCond b e l1 l2 =
 -- App (Call function): translate the args and map the resulting quadruple variables to VVar type, then find
 --    the function in the store and create a declaration that assigns the value of the application
 --    to a new variable, then return that varaiable
--- App (Call method): do the same as calling method, but also get and add the location of the method
+-- App (Call method): do the same as calling function, but also get and add the location of the method
 --    in the vtable
 -- Elem: calculate the subexpression and find the attribute that we want to access, then combine this information
 --    into a new declaration that assigns a value of that attribute to a new quadruple var, then return that var
@@ -492,7 +492,7 @@ translateCond b e l1 l2 =
 --    by doing a subtraction 0 - 'quadruple var' from subexrpession
 -- Ram:
 --    Simplify the expression if left or right is a negation of a subexpression
---    If the operator is a bool operator (and, or), create a new quadruple variable and assign one to it, then
+--    If the operator is a bool operator (and, or), create a new quadruple variable and assign zero to it, then
 --    perform a classical conditional translation, if the value turns out to be true, assign a 1 to the quadruple 
 --    variable and return it, otherwise just return it
 --    If the operator is a regular arithmetic operator, calculate the left and right subexpressions, get the

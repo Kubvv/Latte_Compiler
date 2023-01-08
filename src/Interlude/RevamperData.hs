@@ -64,5 +64,5 @@ putEStr e x (RStore exprMap) = RStore ((e, x):exprMap)
 -- This monad is used during the propagation of values phase
 type PropagateMonad = StateT PropStore IO
 
--- This monad is used during the replacment phase
+-- This monad is used during the replacement phase
 type ReplaceMonad = StateT RepStore IO
