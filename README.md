@@ -63,17 +63,17 @@ The files and their individual goals are as follows:
     their individual liveness range within the block. The liveness of a block is later needed for 
     register allocation.
 - **RegisterAlloc** \
-    RegisterAlloc is mostly responsible for create a RegState data structure, which is used by
+    RegisterAlloc is mostly responsible for creating a RegState data structure, which is used by
     Generator for optimal register allocation in a block of a function or a method. RegState consists
     of register ranges that describe what occupies the register at a given line, a value map which
     describes where every variable used in the function is stored and a stack shift which says how
-    much the stack pointer needs to be shifted after placing arugments at the stack
+    much the stack pointer needs to be shifted after placing arugments at the stack.
 - **Generator** \
     Generator is the central point of the backend - it translates a given quadruples code into
     an assembler form. The generated code consists of 2 sections: .rodata, which holds classes definitions
     and string definitions, and .text which has implementations of all user defined functions and methods. 
     In .text the translation utilises LivenessCheck and RegisterAlloc for an optimal register allocation.
-    Externs to pre-defined functions and method as well as helper functions are located above .rodata.
+    Externs to pre-defined functions and methods as well as helper functions are located above .rodata.
 - **Extractor** \
     Extractor is the final stage of the whole compiler. It translates the assembler code into a string form,
     which is then copied to a .s file, compiled to a .o file and linked with the library runtime file to create
@@ -121,7 +121,7 @@ reduce / reduce conflicts and 6 shift / reduce conflicts. List of the grammar co
 - |new Type \[Expr\]| and |new Type| (Array declaration and Class declaration) - 
     Since the two productions have the same prefix, we want to shift to check whether there
     is a size declaration part after the 'new' Type part.
-- |Expr6 \[Expr\]| and |Expr6 ( ListExpr)| and |Expr6 . Ident| and |(Ident) Expr6|
+- |Expr6 \[Expr\]| and |Expr6 (ListExpr)| and |Expr6 . Ident| and |(Ident) Expr6|
     (Array access and Function call and Element access and Cast) -
     Since the Expr folds to the left instead of to the right, all of these first three
     productions have the same prefix, thus the shift is desirable to check what comes after
