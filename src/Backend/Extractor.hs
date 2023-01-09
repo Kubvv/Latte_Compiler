@@ -68,4 +68,3 @@ extract file prog =
     callProcess "nasm" ["-f elf64", asm, "-o", obj]
     callProcess "gcc" ["-no-pie", "./lib/runtime", obj, "-o", file]
     removeFile obj
-

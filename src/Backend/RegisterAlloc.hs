@@ -110,7 +110,7 @@ mergeSameVars :: [VarRange] -> [(String, [(Integer, Integer)])]
 mergeSameVars xrange = toList $ fromListWith (++) (createGroups xrange)
 
 -- Updates a given Register State by putting a new variable described by the pair (x, fromto).
--- If it is possible to store the variable inside a register for all of its alive period, then
+-- If it is possible to store the variable inside a register for all of its alive periods, then
 -- the RegisterRange and valMap of given state is updated by putToRegister function. Otherwise,
 -- if it's not possible to find a free register, the ValMap and Stack top is updated using a 
 -- putToMemory function.
@@ -140,7 +140,7 @@ mergedToVarRange x (from, to) = (x, from, to)
 -- alloc is the main endpoint of the RegisterAlloc file. Its goal is to
 -- create a RegisterState for some block of code, given the current value map
 -- (places where variables are stored), arguments of the function and liveness sets
--- in betweent the statements. First of all the function creates VarRanges using liveness
+-- in between the statements. First of all the function creates VarRanges using liveness
 -- sets (VarRange describes the ranges where variables are alive), Secondly it creates
 -- an initial register state. Then the register range is updated with already establised
 -- variables (which are arguments saved in registers and memory). Then all variables from

@@ -159,7 +159,7 @@ generateProgram (Q.Prog cls funs strs) =
 -- parent name (if it exists), size of all class attributes (based on their types),
 -- label that points to class methods, number of reference type attributes (Other objects
 -- as attributes of a class), label that points to class references (if needed).
--- Later on a the class methods label is created, which lists all methods visible for 
+-- Later on the class methods label is created, which lists all methods visible for 
 -- a given class, with virtual methods included. Then, if class has some reference attributes,
 -- the refs label which lists all reference indices in the attribute table of a class
 generateClass :: Q.Class -> GeneratorMonad ()
@@ -219,7 +219,7 @@ generateBlock x args stmts =
         rstate = alloc vm args livestmt -- Here registers are allocated preemptively
 
 -- Creates a ValMap that stores the location of a given list of arguments
--- As x86_64 requires, six first arguments are placed to the registers, rest
+-- As x86_64 requires, first six arguments are placed to the registers, rest
 -- is placed in memory on the stack
 generateArgs :: [(Type, String)] -> ValMap
 generateArgs args = addArgsLocations argumentRegisters args 32
@@ -304,7 +304,7 @@ generateBlockEpilog x (shouldUseR12, shouldUseR13) =
 --    the given index and store that address in R13, then move the result stored in R12
 --    to memory location at R13
 -- Ass (LElem): calculate the subexpression (RVal) and store the result in R12,
---    then, if possible, move the object to temporary register R12 if needed,
+--    then move the object to free or temporary register R13,
 --    then check if the address stored in that register is not null, then
 --    access the variable table and get the attribute of the object using the register R13
 --    and move the result stored in R12 to that attribute 
@@ -446,7 +446,7 @@ generateJmpCond op s av1 av2 =
 --    perform operations and then move the value from RBX to destination
 -- Value (Other): If destination and a source are both registers, perform a normal Mov
 --    with a shrinked destination register based on the type of the value, if one of
---    the source, destination pair is a register, do a normal Mov mnemonic, and if
+--    the source - destination pair is a register, do a normal Mov mnemonic, and if
 --    both the source and destination are memory addresses, use the RBX temporary register
 --    shrinked appropiatly to the type to perform the Mov statement 
 generateExpr :: GeneratorData -> Expr -> Integer -> Type -> AVal -> GeneratorMonad ()
@@ -637,7 +637,7 @@ generatePreDivide fReg =
 -- restore original RSP pointer,
 -- move the result to temporary register RBX,
 -- pop all previously pushed arguments,
--- moving the value from RBX to a desired location (desired location comes from caller)
+-- move the value from RBX to a desired location (desired location comes from caller)
 generateCall :: GeneratorData -> AVal -> [Val] -> Integer -> Type -> AVal -> GeneratorMonad ()
 generateCall gd f args line typ dest =
   do

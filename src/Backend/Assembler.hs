@@ -87,7 +87,7 @@ data Register =
   | R12  -- R12 and its smaller parts are used as temporary registers mainly for storing
   | R12D -- a desination for a value of some subexpression. It also temporarily stores the results of
   | R12B -- calls and is used to find the location of a method inside class vtable. Lastly
-         -- it is used as a default register during accessing a class attribute
+         -- it is used as a default register during class attribute accessing
   | R13  -- R13 and its smaller parts are used as temporary registers when dealing
   | R13D -- with getting an array item or class attribute. They're also used when
   | R13B -- pushing memory values to stack
@@ -219,9 +219,9 @@ getRegisterSize x = TRef
 data AVal =
     VConst Integer -- describes a constant integer value 
   | VReg Register -- decribes a value that is stored in a register
-    -- VMem describes a memory addresQ. It consists of a register that holds the basic address, maybe
+    -- VMem describes a memory address. It consists of a register that holds the basic address, maybe
     -- a scale * index (register and integer) and maybe an offset, which together hold sum up to the actual address
-    -- I also added a maybe type for some easier evaluation during generation
+    -- I also added a maybe type for some easier register type evaluation during generation
   | VMem Register (Maybe (Register, Integer)) (Maybe Integer) (Maybe Q.Type)
   | VLab String -- holds the label that points to a constant string value, since strings are stored in .rodata
   deriving (Eq, Ord)

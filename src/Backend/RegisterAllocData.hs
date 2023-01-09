@@ -91,7 +91,7 @@ getArgNames = map snd
 
 data RegisterState = RegState {
   range :: RegisterRange, -- Holds all registers and what occupies them at every range
-  vMap :: ValMap, -- Holds the mapping from a variable to all assembly location where that var is stored
+  vMap :: ValMap, -- Holds the mapping from a variable to all assembly locations where that var is stored
   stack :: Integer -- Holds the amount of stack space required for putting variables 
                    -- on the stack (due to lack of space in registers)
 }
