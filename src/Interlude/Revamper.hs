@@ -11,6 +11,7 @@ import QuadruplesData
 -- checkWrongSub is a special function that detects a situation when we want to declare or assign to
 -- a variable with its own value without using an arithmetic operation (this may happen in blocks for example)
 -- Since value propagation malfunctioned in that case, we create a special variable with a "_rev" postfix to
+-- that we declare with the subexpression and then assign that variable to original destination
 -- detect such situations
 checkWrongSub :: [Stmt] -> [Stmt]
 checkWrongSub [] = []
