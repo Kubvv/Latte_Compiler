@@ -83,11 +83,11 @@ isWhileOrIfLab s =
 -- Checks if a statement has a variable and if it does, checks if it is a member
 -- of the string list. If the statment is not an assignment of a declaration, just return true
 checkEarlierStmt :: [String] -> Stmt -> Bool
-checkEarlierStmt strs (Decl _ x _) 
-  | x `elem` strs = True
+checkEarlierStmt strs (Decl _ x e) 
+  | x `elem` strs || isCallExpr e = True
   | otherwise = False
-checkEarlierStmt strs (Ass _ (LVar x) _) 
-  | x `elem` strs = True
+checkEarlierStmt strs (Ass _ (LVar x) e) 
+  | x `elem` strs || isCallExpr e = True
   | otherwise = False
 checkEarlierStmt _ _ = True
 
@@ -174,6 +174,7 @@ propagateStmts :: [Stmt] -> [Stmt] -> PropagateMonad [Stmt]
 propagateStmts [] acc = 
   do
     let reversedacc = reverse acc
+    liftIO $ putStrLn $ show reversedacc
     let tmp = foldl (\a s -> getDeclAppVars s ++ a) [] reversedacc
     return $ filter (checkEarlierStmt tmp) reversedacc
 propagateStmts (Decl typ1 x1 e : Ass typ2 (LVar x2) (Value (VVar x3)) : stmts) acc

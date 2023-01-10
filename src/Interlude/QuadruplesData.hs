@@ -356,6 +356,11 @@ isMethodOrArrayExpr MetApp {} = True
 isMethodOrArrayExpr Elem {} = True
 isMethodOrArrayExpr _ = False
 
+isCallExpr :: Expr -> Bool
+isCallExpr FunApp {} = True
+isCallExpr MetApp {} = True
+isCallExpr _ = False
+
 -- Type includes all possible quadruple types that can be linked
 -- with quad variables
 data Type = 
