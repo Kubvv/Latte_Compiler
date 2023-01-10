@@ -45,7 +45,7 @@ separator  Stmt "" ;
 -- Types ---------------------------------------------------
 
 Var.       Type ::= "var" ;
-Arr.       Type ::= Type "[]" ;
+Arr.       Type ::= Ident "[]" ;
 Cls.       Type ::= Ident ;
 Void.      Type ::= "void" ;
 
