@@ -110,7 +110,8 @@ defaultClasses :: [Class]
 defaultClasses = [
   Class Default (Ident "String") (Just (Ident "Object")) [
       Method Default (TClass Default (Ident "String")) (Ident "concat") [TClass Default (Ident "String")],
-      Method Default (TInt Default) (Ident "length") []
+      Method Default (TInt Default) (Ident "length") [],
+      Method Default (TBool Default) (Ident "equals") [TClass Default (Ident "Object")]
     ],
   Class Default (Ident "Object") Nothing [
       Method Default (TBool Default) (Ident "equals") [TClass Default (Ident "Object")]
