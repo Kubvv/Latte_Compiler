@@ -118,13 +118,6 @@ xor True False = True
 xor False True = True
 xor _ _ = False
 
--- Convert some basic escape codes so that they print correctly in the label string
-convertString :: String -> String -> String
-convertString [] acc = reverse acc
-convertString (s:ss) acc | s == '\n' = convertString ss ("n" ++ "\\" ++ acc)
-convertString (s:ss) acc | s == '\t' = convertString ss ("t" ++ "\\" ++ acc)
-convertString (s:ss) acc = convertString ss (s:acc)
-
 -- Main endpoint of Generator function, converts the whole quadruples program into
 -- an assembly program. It first runs the translation, then appends the writer statements
 -- using Endo and then cleans the program of unnecessary statements
@@ -194,8 +187,7 @@ generateClass (Cls x mx off attr met) =
 generateString :: (String, String) -> GeneratorMonad ()
 generateString (lab, str) =
   do
-    let modstr = convertString str []
-    tell $ Endo ([A.PutLab lab, DBq (VLab modstr), DB (A.VConst 0)]<>)
+    tell $ Endo ([A.PutLab lab, DBq (VLab str), DB (A.VConst 0)]<>)
 
 -- Generates a function in the .text section by generating its block contents
 generateFunction :: Function -> GeneratorMonad ()

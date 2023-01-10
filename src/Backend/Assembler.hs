@@ -239,7 +239,9 @@ instance Show AVal where
         Just i2 | i2 < 0 -> " - " ++ show (-i2)
         Just i2 | i2 > 0 -> " + " ++ show i2
         Nothing -> ""
-  show (VLab s) = s
+  show (VLab s) = tail (take len (show s))
+    where
+      len = (length $ show s) - 1
 
 -- Checks if a given value is a register
 isRegisterValue :: AVal -> Bool
